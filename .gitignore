@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+
+# OS
+.DS_Store
+
+# Editors
+.cursor/
+.vscode/
+.idea/
+*.swp
+
+# Swift
+macos/PomoCLITimer/.build/
+macos/PomoCLITimer/PomoCLI Timer.app/
+macos/PomoCLITimer/Sources/PomoCLITimer/BuildInfo.swift

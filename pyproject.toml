@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pomocli"
+version = "0.1.0"
+description = "A lightweight, feature-rich Python CLI Pomodoro application"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "gitpython>=3.1.46",
+    "questionary>=2.1.0",
+    "rich>=14.3.3",
+    "textual>=8.1.1",
+    "toml>=0.10.2",
+    "typer>=0.24.1",
+]
+
+[project.optional-dependencies]
+macos = [
+    "pynput>=1.8.1",
+    "rumps>=0.4.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["pomocli"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"pomocli/db/schema.sql" = "pomocli/db/schema.sql"
+"assets/tomato.svg" = "assets/tomato.svg"
+
+[project.scripts]
+pomo = "pomocli.cli.main:app"
+
+[dependency-groups]
+dev = [
+    "poethepoet>=0.32.0",
+    "pytest>=9.0.2",
+    "pytest-mock>=3.15.1",
+]
+
+[tool.poe.tasks]
+# --- Testing ---
+test = "pytest"
+
+# --- CLI ---
+version = "pomo --version"
+install-cli = "uv tool install . --force"
+
+# --- Daemon management ---
+kill-daemon = { shell = "pkill -f 'pomocli.daemon' || echo 'No daemon running'" }
+kill-app = { shell = "pkill PomoCLITimer || echo 'No status bar app running'" }
+kill-all = { shell = "pkill -f 'pomocli.daemon' 2>/dev/null; pkill PomoCLITimer 2>/dev/null; echo 'All pomocli processes killed'" }
+
+# --- Swift status bar app ---
+build-app = { shell = "cd macos/PomoCLITimer && make build" }
+install-app = { shell = "cd macos/PomoCLITimer && make install" }
+clean-app = { shell = "cd macos/PomoCLITimer && make clean" }
+launch-app = { shell = "open -g \"$HOME/Applications/PomoCLI Timer.app\"" }
+
+# --- Full rebuild (kill everything, rebuild both, relaunch) ---
+rebuild = { shell = "poe kill-all && uv tool install . --force && cd macos/PomoCLITimer && make install && echo 'Rebuild complete. Run: pomo start'" }
+
+# --- Logs ---
+logs = { shell = "log stream --predicate 'process == \"PomoCLITimer\"' --level info" }
