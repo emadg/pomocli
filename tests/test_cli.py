@@ -63,3 +63,14 @@ def test_cli_dash_help():
     assert result.exit_code == 0
     assert "--detail" in result.stdout
     assert "minimal, normal, full" in result.stdout
+
+def test_cli_report_month(mocker):
+    # Just mock the generate_report to avoid DB dependency in CLI test
+    mocker.patch('pomocli.cli.main.generate_report')
+    result = runner.invoke(app, ["report", "month"])
+    assert result.exit_code == 0
+
+def test_cli_report_quarter(mocker):
+    mocker.patch('pomocli.cli.main.generate_report')
+    result = runner.invoke(app, ["report", "quarter"])
+    assert result.exit_code == 0

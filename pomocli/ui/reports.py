@@ -15,6 +15,10 @@ def generate_report(period: str = "today"):
         date_filter = "date(start_time) = date('now')"
     elif period == "week":
         date_filter = "date(start_time) >= date('now', '-7 days')"
+    elif period == "month":
+        date_filter = "date(start_time) >= date('now', 'start of month')"
+    elif period == "quarter":
+        date_filter = "date(start_time) >= date('now', '-90 days')"
     else:
         date_filter = "1=1"
         
@@ -34,6 +38,19 @@ def generate_report(period: str = "today"):
     
     cursor.execute(query)
     rows = cursor.fetchall()
+    
+    trend_query = f"""
+        SELECT 
+            date(start_time) as day,
+            SUM(duration_logged) as daily_duration
+        FROM sessions
+        WHERE {date_filter}
+        GROUP BY day
+        ORDER BY day ASC
+    """
+    cursor.execute(trend_query)
+    trend_rows = cursor.fetchall()
+    
     conn.close()
     
     table = Table(title=f"Pomodoro Report ({period.capitalize()})")
@@ -65,3 +82,15 @@ def generate_report(period: str = "today"):
     total_mins = total_time // 60
     t_hours, t_mins = divmod(total_mins, 60)
     console.print(f"\n[bold]Total Time Logged:[/bold] {t_hours}h {t_mins}m")
+
+    if trend_rows and period != "today":
+        console.print("\n[bold]Daily Trend:[/bold]")
+        max_duration = max((r['daily_duration'] or 0) for r in trend_rows)
+        if max_duration > 0:
+            for r in trend_rows:
+                day = r['day']
+                dur = r['daily_duration'] or 0
+                mins = dur // 60
+                bar_len = int((dur / max_duration) * 40)
+                bar = "█" * bar_len
+                console.print(f"  {day} | {mins:3d}m | [blue]{bar}[/blue]")

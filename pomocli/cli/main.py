@@ -210,7 +210,7 @@ def interactive_mode() -> None:
             console.print(f"[bold red]Error: {response.get('message')}[/bold red]")
     elif cmd == "report":
         period = questionary.select(
-            "Report period:", choices=["today", "week", "all"]
+            "Report period:", choices=["today", "week", "month", "quarter", "all"]
         ).ask()
         if period is None:
             raise typer.Abort()
@@ -538,7 +538,7 @@ def dash(
 @app.command()
 def report(
     period: str = typer.Argument(
-        "today", help="Period to report on (today, week, all)"
+        "today", help="Period to report on (today, week, month, quarter, all)"
     ),
 ):
     """Show a summary report of logged time."""
