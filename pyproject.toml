@@ -28,6 +28,7 @@ packages = ["pomocli"]
 [tool.hatch.build.targets.wheel.force-include]
 "pomocli/db/schema.sql" = "pomocli/db/schema.sql"
 "assets/tomato.svg" = "assets/tomato.svg"
+"pomocli/_build_info.py" = "pomocli/_build_info.py"
 
 [project.scripts]
 pomo = "pomocli.cli.main:app"
@@ -40,12 +41,15 @@ dev = [
 ]
 
 [tool.poe.tasks]
+# --- Build ---
+stamp = { shell = "python scripts/stamp_version.py" }
+
 # --- Testing ---
 test = "pytest"
 
 # --- CLI ---
 version = "pomo --version"
-install-cli = "uv tool install . --force"
+install-cli = { shell = "poe stamp && uv tool install . --force && echo \"Installed pomocli $(python scripts/stamp_version.py)\"" }
 
 # --- Daemon management ---
 kill-daemon = { shell = "pkill -f 'pomocli.daemon' || echo 'No daemon running'" }
@@ -54,12 +58,12 @@ kill-all = { shell = "pkill -f 'pomocli.daemon' 2>/dev/null; pkill PomoCLITimer 
 
 # --- Swift status bar app ---
 build-app = { shell = "cd macos/PomoCLITimer && make build" }
-install-app = { shell = "cd macos/PomoCLITimer && make install" }
+install-app = { shell = "cd macos/PomoCLITimer && make install && echo \"Installed PomoCLITimer $(python ../../scripts/stamp_version.py)\"" }
 clean-app = { shell = "cd macos/PomoCLITimer && make clean" }
 launch-app = { shell = "open -g \"$HOME/Applications/PomoCLI Timer.app\"" }
 
 # --- Full rebuild (kill everything, rebuild both, relaunch) ---
-rebuild = { shell = "poe kill-all && uv tool install . --force && cd macos/PomoCLITimer && make install && echo 'Rebuild complete. Run: pomo start'" }
+rebuild = { shell = "poe stamp && poe kill-all && uv tool install . --force && cd macos/PomoCLITimer && make install && echo \"Rebuild complete. Installed version $(python ../../scripts/stamp_version.py). Run: pomo start\"" }
 
 # --- Logs ---
 logs = { shell = "log stream --predicate 'process == \"PomoCLITimer\"' --level info" }

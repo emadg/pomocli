@@ -4,8 +4,8 @@ BUILD_DIR = .build/release
 APP_BUNDLE = $(APP_NAME).app
 INSTALL_DIR = $(HOME)/Applications
 REPO_ROOT = ../..
-VERSION = 0.1.0
-BUILD_STAMP = $(VERSION).dev$(shell date -u +%Y%m%d%H%M%S)
+VERSION = $(shell grep '^version' $(REPO_ROOT)/pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+BUILD_STAMP = $(VERSION).dev$(shell date -u +%Y.%m.%d.%H%M)
 VERSION_FILE = Sources/PomoCLITimer/BuildInfo.swift
 
 .PHONY: build bundle install clean

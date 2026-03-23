@@ -5,6 +5,7 @@ __pycache__/
 dist/
 build/
 .venv/
+pomocli/_build_info.py
 
 # OS
 .DS_Store
