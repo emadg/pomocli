@@ -224,7 +224,7 @@ def interactive_mode() -> None:
     elif cmd == "resume":
         _resume_cmd_impl()
     elif cmd == "stop":
-        _stop_cmd_impl()
+        _stop_cmd_impl(skip_confirm=True)
     elif cmd == "kill":
         kill()
     elif cmd == "status":
@@ -354,7 +354,7 @@ def start(
     """Start a new pomodoro session."""
     _start_cmd_impl(task, project, duration, estimate, last, tag)
 
-@app.command(name="ss", hidden=True)
+@app.command(name="ss")
 def start_shorthand(
     task: Optional[str] = typer.Argument(
         None, help="Name of the task", autocompletion=complete_tasks
@@ -369,7 +369,7 @@ def start_shorthand(
     last: bool = typer.Option(False, "--last", "-l", help="Resume last task"),
     tag: Optional[List[str]] = typer.Option(None, "--tag", "-t", help="Tags for this session"),
 ):
-    """Start a new pomodoro session (shorthand)."""
+    """Shorthand for start."""
     _start_cmd_impl(task, project, duration, estimate, last, tag)
 
 def _start_cmd_impl(task, project, duration, estimate, last, tag):
@@ -401,8 +401,9 @@ def pause():
     """Pause the current session."""
     _pause_cmd_impl()
 
-@app.command(name="pp", hidden=True)
+@app.command(name="pp")
 def pause_shorthand():
+    """Shorthand for pause."""
     _pause_cmd_impl()
 
 def _pause_cmd_impl():
@@ -418,8 +419,9 @@ def resume():
     """Resume a paused session."""
     _resume_cmd_impl()
 
-@app.command(name="rr", hidden=True)
+@app.command(name="rr")
 def resume_shorthand():
+    """Shorthand for resume."""
     _resume_cmd_impl()
 
 def _resume_cmd_impl():
@@ -431,15 +433,26 @@ def _resume_cmd_impl():
 
 
 @app.command()
-def stop():
+def stop(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+):
     """Stop and save the current session."""
-    _stop_cmd_impl()
+    _stop_cmd_impl(yes)
 
-@app.command(name="sp", hidden=True)
-def stop_shorthand():
-    _stop_cmd_impl()
+@app.command(name="sp")
+def stop_shorthand(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+):
+    """Shorthand for stop."""
+    _stop_cmd_impl(yes)
 
-def _stop_cmd_impl():
+def _stop_cmd_impl(skip_confirm: bool = False):
+    if not skip_confirm and _is_interactive():
+        confirmed = typer.confirm("Stop the current session?", default=False)
+        if not confirmed:
+            console.print("[bold yellow]Session not stopped.[/bold yellow]")
+            raise typer.Exit()
+
     response = client.stop()
     if response.get("status") == "ok":
         console.print("[bold green]Session stopped and saved.[/bold green]")
@@ -466,12 +479,13 @@ def distract(
     """Log a distraction during the current session."""
     _distract_cmd_impl(description)
 
-@app.command(name="dd", hidden=True)
+@app.command(name="dd")
 def distract_shorthand(
     description: Optional[str] = typer.Argument(
         None, help="Short description of the distraction"
     ),
 ):
+    """Shorthand for distract."""
     _distract_cmd_impl(description)
 
 def _distract_cmd_impl(description):
@@ -494,8 +508,9 @@ def status():
     """Show current timer status."""
     _status_cmd_impl()
 
-@app.command(name="stt", hidden=True)
+@app.command(name="stt")
 def status_shorthand():
+    """Shorthand for status."""
     _status_cmd_impl()
 
 def _status_cmd_impl():

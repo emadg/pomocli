@@ -48,6 +48,10 @@ def test_cli_shorthand_and_help():
     assert result.exit_code == 0
     assert "A lightweight, feature-rich CLI Pomodoro application" in result.stdout
 
+    # Shorthand commands should appear in main help
+    for alias in ("ss", "pp", "rr", "sp", "dd", "stt"):
+        assert alias in result.stdout, f"shorthand '{alias}' missing from help"
+
     # Test subcommand -h works
     result = runner.invoke(app, ["start", "-h"])
     assert result.exit_code == 0
@@ -56,13 +60,32 @@ def test_cli_shorthand_and_help():
     # Test shorthand command exists
     result = runner.invoke(app, ["ss", "--help"])
     assert result.exit_code == 0
-    assert "Start a new pomodoro session" in result.stdout
+    assert "Shorthand for start" in result.stdout
 
 def test_cli_dash_help():
     result = runner.invoke(app, ["dash", "--help"])
     assert result.exit_code == 0
     assert "--detail" in result.stdout
     assert "minimal, normal, full" in result.stdout
+
+def test_cli_stop_confirm_yes(mocker):
+    mocker.patch('pomocli.cli.main._is_interactive', return_value=True)
+    mocker.patch('pomocli.daemon.client.DaemonClient.stop', return_value={"status": "ok"})
+    result = runner.invoke(app, ["stop"], input="y\n")
+    assert result.exit_code == 0
+    assert "Session stopped and saved." in result.stdout
+
+def test_cli_stop_confirm_no(mocker):
+    mocker.patch('pomocli.cli.main._is_interactive', return_value=True)
+    result = runner.invoke(app, ["stop"], input="N\n")
+    assert result.exit_code == 0
+    assert "Session not stopped." in result.stdout
+
+def test_cli_stop_skip_confirm(mocker):
+    mocker.patch('pomocli.daemon.client.DaemonClient.stop', return_value={"status": "ok"})
+    result = runner.invoke(app, ["stop", "--yes"])
+    assert result.exit_code == 0
+    assert "Session stopped and saved." in result.stdout
 
 def test_cli_report_month(mocker):
     # Just mock the generate_report to avoid DB dependency in CLI test

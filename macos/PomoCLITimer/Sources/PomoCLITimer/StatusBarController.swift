@@ -7,11 +7,26 @@ final class StatusBarController {
     private var currentState: String = "stopped"
     private let client: DaemonClient
 
+    private static func emojiImage(_ emoji: String, size: CGFloat = 18) -> NSImage {
+        let font = NSFont.systemFont(ofSize: size)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font]
+        let textSize = (emoji as NSString).size(withAttributes: attrs)
+        let imgSize = NSSize(width: ceil(textSize.width), height: ceil(textSize.height))
+        let image = NSImage(size: imgSize)
+        image.lockFocus()
+        (emoji as NSString).draw(at: .zero, withAttributes: attrs)
+        image.unlockFocus()
+        image.isTemplate = false
+        return image
+    }
+
     init(client: DaemonClient) {
         self.client = client
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "🍅"
+        statusItem.button?.image = Self.emojiImage("🍅")
+        statusItem.button?.imagePosition = .imageLeading
+        statusItem.button?.title = ""
 
         pauseResumeItem = NSMenuItem(title: "Pause", action: nil, keyEquivalent: "")
         stopItem = NSMenuItem(title: "Stop", action: nil, keyEquivalent: "")
@@ -37,18 +52,19 @@ final class StatusBarController {
 
     func update(state: String, timeLeft: Int) {
         currentState = state
+        let mins = timeLeft / 60
+        let secs = timeLeft % 60
 
         switch state {
         case "running":
-            let mins = timeLeft / 60
-            let secs = timeLeft % 60
-            statusItem.button?.title = String(format: "🍅 %02d:%02d", mins, secs)
+            statusItem.button?.image = Self.emojiImage("🍅")
+            statusItem.button?.title = String(format: " %02d:%02d", mins, secs)
         case "paused":
-            let mins = timeLeft / 60
-            let secs = timeLeft % 60
-            statusItem.button?.title = String(format: "⏸ %02d:%02d", mins, secs)
+            statusItem.button?.image = Self.emojiImage("⏸")
+            statusItem.button?.title = String(format: " %02d:%02d", mins, secs)
         default:
-            statusItem.button?.title = "🍅"
+            statusItem.button?.image = Self.emojiImage("🍅")
+            statusItem.button?.title = ""
         }
 
         updateMenuState()
@@ -56,7 +72,8 @@ final class StatusBarController {
 
     func updateDisconnected() {
         currentState = "stopped"
-        statusItem.button?.title = "🍅"
+        statusItem.button?.image = Self.emojiImage("🍅")
+        statusItem.button?.title = ""
         updateMenuState()
     }
 
@@ -91,10 +108,13 @@ final class StatusBarController {
 
     /// Briefly flash the status bar to indicate a distraction was logged.
     func flashDistraction() {
-        let saved = statusItem.button?.title ?? "🍅"
-        statusItem.button?.title = "⚡ distraction"
+        let savedImage = statusItem.button?.image
+        let savedTitle = statusItem.button?.title ?? ""
+        statusItem.button?.image = Self.emojiImage("⚡")
+        statusItem.button?.title = " distraction"
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            self?.statusItem.button?.title = saved
+            self?.statusItem.button?.image = savedImage
+            self?.statusItem.button?.title = savedTitle
         }
     }
 }
