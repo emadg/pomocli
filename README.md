@@ -56,20 +56,31 @@ Running `pomo start` without a task name also drops into interactive mode, where
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `pomo` | Interactive command picker |
-| `pomo start [TASK]` | Start a pomodoro session |
-| `pomo pause` | Pause the current session |
-| `pomo resume` | Resume a paused session |
-| `pomo stop` | Stop and save the current session |
-| `pomo kill` | Abort session without saving as completed |
-| `pomo distract [DESC]` | Log a distraction |
-| `pomo status` | Show current timer status |
-| `pomo report [PERIOD]` | Summary report (`today`, `week`, or `all`) |
-| `pomo dash` | Open the live TUI dashboard |
-| `pomo config` | Interactively configure settings |
-| `pomo init` | Initialize (or reinitialize) the database |
+| Command | Shorthand | Description |
+|---------|-----------|-------------|
+| `pomo` | | Interactive command picker |
+| `pomo start [TASK]` | `ss` | Start a pomodoro session |
+| `pomo pause` | `pp` | Pause the current session |
+| `pomo resume` | `rr` | Resume a paused session |
+| `pomo stop` | `sp` | Stop and save the current session |
+| `pomo kill` | | Abort session without saving as completed |
+| `pomo distract [DESC]` | `dd` | Log a distraction |
+| `pomo status` | `stt` | Show current timer status |
+| `pomo report [PERIOD]` | | Summary report (`today`, `week`, `month`, `quarter`, or `all`) |
+| `pomo dash` | | Open the live TUI dashboard (supports `--detail minimal|normal|full`) |
+| `pomo config` | | Interactively configure settings |
+| `pomo init` | | Initialize (or reinitialize) the database |
+
+*Tip: You can always use `-h` instead of `--help` for any command.*
+
+### Shell Completion
+
+Pomocli supports shell completion for bash, zsh, fish, and powershell. To install it, run:
+
+```bash
+pomo --show-completion
+# Follow the instructions for your shell
+```
 
 ### `pomo start` Options
 
@@ -127,9 +138,7 @@ Once installed, `pomo start` will auto-launch the status bar app. You can also o
 - **Global hotkey** — press Cmd+Shift+D (configurable via `hotkey_distraction` in config) to log a distraction
 - **Idle detection** — auto-pauses the timer when you're away (uses Quartz, no Accessibility permissions needed)
 
-### Legacy Python macOS Extras
-
-The optional Python-based macOS integrations (`uv pip install ".[macos]"` with `rumps` and `pynput`) are still available but superseded by the native Swift app above.
+*Note: Global hotkeys and macOS status bar integration are provided exclusively by the Swift app. The Python daemon no longer attempts to capture global hotkeys to avoid Accessibility permission issues and duplicate logging.*
 
 ## Development
 
