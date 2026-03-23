@@ -6,10 +6,11 @@ import subprocess
 from pathlib import Path
 import threading
 import sys
+import logging
 from .timer import PomodoroTimer, TimerState
 from ..db.operations import update_session, log_distraction
 from ..config import load_config
-from .macos import PomodoroStatusBar, IdleDetector, GlobalHotkey
+from .macos import IdleDetector
 from .. import __build__
 
 SOCKET_PATH = Path.home() / ".config" / "pomocli" / "pomo.sock"
@@ -40,33 +41,29 @@ class DaemonServer:
         self._running = False
         self._stop_event = threading.Event()
 
-        # macOS integrations - these gracefully no-op if unavailable
-        self.status_bar = PomodoroStatusBar(
-            on_pause=self._toggle_pause, on_stop=self._stop_session
-        )
+        cfg = load_config()
+
+        # macOS integrations - disabled on macOS in favor of the Swift app
+        # On other platforms, IdleDetector may still work via pynput
         self.idle_detector = IdleDetector(
-            timeout_seconds=300, on_idle=self._on_idle
+            timeout_seconds=cfg.get("idle_timeout", 300), on_idle=self._on_idle
         )
-        self.hotkey = GlobalHotkey(on_distract=self._on_distract)
 
     def _toggle_pause(self):
         if self.timer.state == TimerState.RUNNING:
             self.timer.pause()
         elif self.timer.state == TimerState.PAUSED:
             self.timer.resume()
-        self._update_status_bar()
 
     def _stop_session(self):
         if self.timer.session_id:
             logged = self.timer.duration - self.timer.time_left
             update_session(self.timer.session_id, "stopped", logged, end_time=True)
         self.timer.stop()
-        self._update_status_bar()
 
     def _on_idle(self):
         if self.timer.state == TimerState.RUNNING:
             self.timer.pause()
-            self._update_status_bar()
 
     def _extend_on_distract(self):
         """Extend timer by configured minutes when a distraction is logged."""
@@ -81,11 +78,8 @@ class DaemonServer:
             self._extend_on_distract()
             play_sound("distract")
 
-    def _update_status_bar(self):
-        self.status_bar.update_status(self.timer.state.value, self.timer.time_left)
-
     def _on_tick(self, time_left: int):
-        self._update_status_bar()
+        pass
 
     def _on_complete(self):
         if self.timer.session_id:
@@ -93,7 +87,6 @@ class DaemonServer:
                 self.timer.session_id, "completed", self.timer.duration, end_time=True
             )
             play_sound("complete")
-        self._update_status_bar()
 
     def handle_client(self, conn: socket.socket):
         try:
@@ -169,34 +162,39 @@ class DaemonServer:
         # Write PID file so CLI can check if daemon is alive
         PID_PATH.write_text(str(os.getpid()))
 
+        log_level = os.environ.get("POMO_LOG_LEVEL", "INFO").upper()
+        logging.basicConfig(
+            level=getattr(logging, log_level, logging.INFO),
+            format="%(asctime)s %(levelname)s %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%SZ"
+        )
+        logging.Formatter.converter = time.gmtime
+
         self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.server.bind(str(SOCKET_PATH))
         self.server.listen(5)
         self.server.settimeout(1.0)  # Allow periodic check of stop event
         self._running = True
 
-        print(f"Daemon {__build__} listening on {SOCKET_PATH} (PID {os.getpid()})")
+        logging.info(f"Daemon {__build__} listening on {SOCKET_PATH} (PID {os.getpid()})")
         sys.stdout.flush()
 
         # Handle SIGTERM/SIGINT for clean shutdown
         def _signal_handler(signum, frame):
+            logging.info("Received shutdown signal")
             self._stop_event.set()
 
         signal.signal(signal.SIGTERM, _signal_handler)
         signal.signal(signal.SIGINT, _signal_handler)
 
-        # Start optional background listeners (no-op if unavailable)
-        try:
-            self.idle_detector.start()
-        except Exception as e:
-            print(f"Warning: Idle detector unavailable: {e}")
-            sys.stdout.flush()
-
-        try:
-            self.hotkey.start()
-        except Exception as e:
-            print(f"Warning: Global hotkeys unavailable: {e}")
-            sys.stdout.flush()
+        # Start optional background listeners (no-op if unavailable or on macOS)
+        if sys.platform != "darwin":
+            try:
+                self.idle_detector.start()
+            except Exception as e:
+                logging.warning(f"Idle detector unavailable: {e}")
+        else:
+            logging.debug("Skipping Python IdleDetector on macOS (handled by Swift app)")
 
         # Main loop - just accept socket connections
         try:
@@ -216,11 +214,11 @@ class DaemonServer:
             self.stop()
 
     def stop(self):
+        logging.info("Shutting down daemon")
         self._running = False
         self._stop_event.set()
         self.timer.stop()
         self.idle_detector.stop()
-        self.hotkey.stop()
         try:
             self.server.close()
         except Exception:

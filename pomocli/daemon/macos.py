@@ -17,12 +17,6 @@ _INPUT_MONITOR_ENABLED = os.environ.get("POMO_ENABLE_INPUT_MONITOR", "").strip()
     "yes",
 )
 
-try:
-    import rumps
-    RUMPS_AVAILABLE = True
-except ImportError:
-    RUMPS_AVAILABLE = False
-
 PYNPUT_AVAILABLE = False
 if _INPUT_MONITOR_ENABLED:
     try:
@@ -32,60 +26,6 @@ if _INPUT_MONITOR_ENABLED:
         pass
 
 
-class PomodoroStatusBar:
-    """macOS menu bar status display. No-ops gracefully when rumps is unavailable."""
-
-    def __init__(self, on_pause: Callable, on_stop: Callable):
-        self.on_pause = on_pause
-        self.on_stop = on_stop
-        self._app = None
-        self.available = RUMPS_AVAILABLE
-
-        if RUMPS_AVAILABLE:
-            try:
-                self._app = _RumpsApp(on_pause, on_stop)
-            except Exception:
-                self.available = False
-
-    def run(self):
-        if self._app:
-            self._app.run()
-
-    def update_status(self, state: str, time_left: int):
-        if not self._app:
-            return
-        try:
-            if state == "stopped":
-                self._app.title = "🍅"
-            else:
-                mins, secs = divmod(time_left, 60)
-                icon = "🍅" if state == "running" else "⏸"
-                self._app.title = f"{icon} {mins:02d}:{secs:02d}"
-        except Exception:
-            pass
-
-
-if RUMPS_AVAILABLE:
-    class _RumpsApp(rumps.App):
-        def __init__(self, on_pause: Callable, on_stop: Callable):
-            super().__init__("🍅", quit_button=None)
-            self._on_pause = on_pause
-            self._on_stop = on_stop
-            self.menu = [
-                rumps.MenuItem("Pause/Resume", callback=self._toggle_pause),
-                rumps.MenuItem("Stop", callback=self._stop_session),
-                None,
-                rumps.MenuItem("Quit Daemon", callback=self._quit),
-            ]
-
-        def _toggle_pause(self, _):
-            self._on_pause()
-
-        def _stop_session(self, _):
-            self._on_stop()
-
-        def _quit(self, _):
-            rumps.quit_application()
 
 
 class IdleDetector:
@@ -142,30 +82,3 @@ class IdleDetector:
                 pass
 
 
-class GlobalHotkey:
-    """Global hotkey listener (Cmd+Shift+D). No-ops when pynput is unavailable."""
-
-    def __init__(self, on_distract: Callable):
-        self.on_distract = on_distract
-        self.listener = None
-        self.available = PYNPUT_AVAILABLE
-
-    def start(self):
-        if not PYNPUT_AVAILABLE:
-            return
-
-        try:
-            self.listener = keyboard.GlobalHotKeys(
-                {"<cmd>+<shift>+d": self.on_distract}
-            )
-            self.listener.start()
-        except Exception as e:
-            print(f"Warning: Could not start global hotkey listener: {e}")
-            self.available = False
-
-    def stop(self):
-        if self.listener:
-            try:
-                self.listener.stop()
-            except Exception:
-                pass
