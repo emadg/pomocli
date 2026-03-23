@@ -13,6 +13,7 @@ from ..db.operations import (
     create_session,
     get_recent_tasks,
     get_recent_projects,
+    get_recent_tag_names,
     log_distraction,
     add_tags,
 )
@@ -61,7 +62,7 @@ def _interactive_start() -> None:
 
     if task_names:
         choices = ["New task"] + task_names
-        answer = questionary.select("Select a task:", choices=choices).ask()
+        answer = questionary.autocomplete("Select a task:", choices=choices).ask()
         if answer is None:
             raise typer.Abort()
         if answer == "New task":
@@ -78,7 +79,7 @@ def _interactive_start() -> None:
     recent_projects = get_recent_projects(limit=10, days=days)
     if recent_projects:
         proj_choices = ["No project", "New project"] + recent_projects
-        proj_answer = questionary.select("Select a project:", choices=proj_choices).ask()
+        proj_answer = questionary.autocomplete("Select a project:", choices=proj_choices).ask()
         if proj_answer is None:
             raise typer.Abort()
         if proj_answer == "New project":
@@ -99,7 +100,15 @@ def _interactive_start() -> None:
         duration = int(default_dur)
 
     # --- tags ---
-    tag_str = questionary.text("Tags (comma-separated, or blank):").ask()
+    recent_tags = get_recent_tag_names(limit=30)
+    if recent_tags:
+        tag_str = questionary.autocomplete(
+            "Tags (comma-separated, or blank):", 
+            choices=recent_tags,
+        ).ask()
+    else:
+        tag_str = questionary.text("Tags (comma-separated, or blank):").ask()
+        
     tags: list[str] | None = None
     if tag_str:
         tags = [t.strip() for t in tag_str.split(",") if t.strip()]
@@ -175,7 +184,7 @@ def interactive_mode() -> None:
         "Initialize database": "init",
     }
 
-    answer = questionary.select(
+    answer = questionary.autocomplete(
         "What would you like to do?",
         choices=list(commands.keys()),
     ).ask()

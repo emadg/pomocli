@@ -128,3 +128,39 @@ def get_recent_projects(limit: int = 10, days: int | None = None) -> List[str]:
     rows = cursor.fetchall()
     conn.close()
     return [row["project_name"] for row in rows]
+
+def get_recent_tag_names(limit: int = 30) -> List[str]:
+    """Get recently used tag names."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        """
+        SELECT DISTINCT t.tag_name 
+        FROM tags t
+        JOIN sessions s ON t.session_id = s.id
+        ORDER BY s.start_time DESC
+        LIMIT ?
+        """,
+        (limit,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [row["tag_name"] for row in rows]
+    """Get recently used project names."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if days is not None:
+        cursor.execute(
+            f"SELECT DISTINCT project_name FROM tasks WHERE project_name IS NOT NULL AND last_accessed >= datetime('now', '-{int(days)} days') ORDER BY last_accessed DESC LIMIT ?",
+            (limit,),
+        )
+    else:
+        cursor.execute(
+            "SELECT DISTINCT project_name FROM tasks WHERE project_name IS NOT NULL ORDER BY last_accessed DESC LIMIT ?",
+            (limit,),
+        )
+    rows = cursor.fetchall()
+    conn.close()
+    return [row["project_name"] for row in rows]
