@@ -41,3 +41,19 @@ def test_cli_pause(mocker):
     result = runner.invoke(app, ["pause"])
     assert result.exit_code == 0
     assert "Session paused." in result.stdout
+
+def test_cli_shorthand_and_help():
+    # Test -h works
+    result = runner.invoke(app, ["-h"])
+    assert result.exit_code == 0
+    assert "A lightweight, feature-rich CLI Pomodoro application" in result.stdout
+
+    # Test subcommand -h works
+    result = runner.invoke(app, ["start", "-h"])
+    assert result.exit_code == 0
+    assert "Start a new pomodoro session" in result.stdout
+
+    # Test shorthand command exists
+    result = runner.invoke(app, ["ss", "--help"])
+    assert result.exit_code == 0
+    assert "Start a new pomodoro session" in result.stdout

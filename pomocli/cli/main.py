@@ -24,8 +24,9 @@ from .. import __build__
 app = typer.Typer(
     name="pomo",
     help="A lightweight, feature-rich CLI Pomodoro application.",
-    add_completion=False,
+    add_completion=True,
     no_args_is_help=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 console = Console()
 client = DaemonClient()
@@ -210,15 +211,15 @@ def interactive_mode() -> None:
     elif cmd == "init":
         init_cmd()
     elif cmd == "pause":
-        pause()
+        _pause_cmd_impl()
     elif cmd == "resume":
-        resume()
+        _resume_cmd_impl()
     elif cmd == "stop":
-        stop()
+        _stop_cmd_impl()
     elif cmd == "kill":
         kill()
     elif cmd == "status":
-        status()
+        _status_cmd_impl()
     elif cmd == "dash":
         run_dashboard()
 
@@ -342,6 +343,27 @@ def start(
     tag: Optional[List[str]] = typer.Option(None, "--tag", "-t", help="Tags for this session"),
 ):
     """Start a new pomodoro session."""
+    _start_cmd_impl(task, project, duration, estimate, last, tag)
+
+@app.command(name="ss", hidden=True)
+def start_shorthand(
+    task: Optional[str] = typer.Argument(
+        None, help="Name of the task", autocompletion=complete_tasks
+    ),
+    project: Optional[str] = typer.Option(
+        None, "--project", "-p", help="Project name"
+    ),
+    duration: int = typer.Option(25, "--duration", "-d", help="Duration in minutes"),
+    estimate: Optional[int] = typer.Option(
+        None, "--estimate", "-e", help="Estimated minutes"
+    ),
+    last: bool = typer.Option(False, "--last", "-l", help="Resume last task"),
+    tag: Optional[List[str]] = typer.Option(None, "--tag", "-t", help="Tags for this session"),
+):
+    """Start a new pomodoro session (shorthand)."""
+    _start_cmd_impl(task, project, duration, estimate, last, tag)
+
+def _start_cmd_impl(task, project, duration, estimate, last, tag):
     init_db()
 
     # Handle --last flag
@@ -368,6 +390,13 @@ def start(
 @app.command()
 def pause():
     """Pause the current session."""
+    _pause_cmd_impl()
+
+@app.command(name="pp", hidden=True)
+def pause_shorthand():
+    _pause_cmd_impl()
+
+def _pause_cmd_impl():
     response = client.pause()
     if response.get("status") == "ok":
         console.print("[bold yellow]Session paused.[/bold yellow]")
@@ -378,6 +407,13 @@ def pause():
 @app.command()
 def resume():
     """Resume a paused session."""
+    _resume_cmd_impl()
+
+@app.command(name="rr", hidden=True)
+def resume_shorthand():
+    _resume_cmd_impl()
+
+def _resume_cmd_impl():
     response = client.resume()
     if response.get("status") == "ok":
         console.print("[bold green]Session resumed.[/bold green]")
@@ -388,6 +424,13 @@ def resume():
 @app.command()
 def stop():
     """Stop and save the current session."""
+    _stop_cmd_impl()
+
+@app.command(name="sp", hidden=True)
+def stop_shorthand():
+    _stop_cmd_impl()
+
+def _stop_cmd_impl():
     response = client.stop()
     if response.get("status") == "ok":
         console.print("[bold green]Session stopped and saved.[/bold green]")
@@ -412,6 +455,17 @@ def distract(
     ),
 ):
     """Log a distraction during the current session."""
+    _distract_cmd_impl(description)
+
+@app.command(name="dd", hidden=True)
+def distract_shorthand(
+    description: Optional[str] = typer.Argument(
+        None, help="Short description of the distraction"
+    ),
+):
+    _distract_cmd_impl(description)
+
+def _distract_cmd_impl(description):
     response = client.distract(description)
     if response.get("status") == "ok":
         msg = "Distraction logged."
@@ -429,6 +483,13 @@ def distract(
 @app.command()
 def status():
     """Show current timer status."""
+    _status_cmd_impl()
+
+@app.command(name="stt", hidden=True)
+def status_shorthand():
+    _status_cmd_impl()
+
+def _status_cmd_impl():
     response = client.status()
     if response.get("status") == "ok":
         data = response.get("data", {})
