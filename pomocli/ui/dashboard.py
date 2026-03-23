@@ -17,17 +17,24 @@ class DashboardApp(App):
         content-align: center middle;
         height: 1fr;
     }
+    #detail-display {
+        content-align: center middle;
+        height: 1fr;
+        color: $text-muted;
+    }
     """
     
-    def __init__(self):
+    def __init__(self, detail: str = "normal"):
         super().__init__()
         self.client = DaemonClient()
+        self.detail = detail
         
     def compose(self) -> ComposeResult:
         yield Header()
         yield Container(
             Static("00:00", id="timer-display"),
-            Static("Not running", id="status-display")
+            Static("Not running", id="status-display"),
+            Static("", id="detail-display")
         )
         yield Footer()
         
@@ -46,10 +53,31 @@ class DashboardApp(App):
             
             self.query_one("#timer-display", Static).update(timer_str)
             self.query_one("#status-display", Static).update(state.capitalize())
+
+            detail_str = ""
+            if state != "stopped" and self.detail in ("normal", "full"):
+                task = data.get("task_name")
+                proj = data.get("project_name")
+                if task:
+                    detail_str = f"Task: {task}"
+                    if proj:
+                        detail_str += f" [{proj}]"
+                
+                if self.detail == "full":
+                    duration = data.get("duration", 0)
+                    dmins = duration // 60
+                    detail_str += f" | {dmins}m"
+                    repo = data.get("git_repo")
+                    if repo:
+                        branch = data.get("git_branch", "")
+                        detail_str += f" | {repo}/{branch}"
+
+            self.query_one("#detail-display", Static).update(detail_str)
         else:
             self.query_one("#timer-display", Static).update("--:--")
             self.query_one("#status-display", Static).update("Daemon disconnected")
+            self.query_one("#detail-display", Static).update("")
 
-def run_dashboard():
-    app = DashboardApp()
+def run_dashboard(detail: str = "normal"):
+    app = DashboardApp(detail=detail)
     app.run()

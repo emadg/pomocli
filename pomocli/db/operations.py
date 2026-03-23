@@ -90,6 +90,30 @@ def add_tags(session_id: int, tags: List[str]):
     conn.commit()
     conn.close()
 
+def get_session_task_info(session_id: int) -> dict:
+    """Get task and git info for a given session."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT t.task_name, t.project_name, s.git_repo, s.git_branch
+        FROM sessions s
+        JOIN tasks t ON s.task_id = t.id
+        WHERE s.id = ?
+    """, (session_id,))
+    
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        return {
+            "task_name": row["task_name"],
+            "project_name": row["project_name"],
+            "git_repo": row["git_repo"],
+            "git_branch": row["git_branch"],
+        }
+    return {}
+
 def get_recent_tasks(limit: int = 10, days: int | None = None) -> List[sqlite3.Row]:
     """Get recently accessed tasks for auto-completion."""
     conn = get_connection()

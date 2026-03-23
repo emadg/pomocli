@@ -135,7 +135,16 @@ class DaemonServer:
                         "message": "No active session running",
                     }
             elif command == "status":
-                response["data"] = self.timer.get_status()
+                status_data = self.timer.get_status()
+                if status_data.get("session_id"):
+                    try:
+                        from ..db.operations import get_session_task_info
+                        info = get_session_task_info(status_data["session_id"])
+                        if info:
+                            status_data.update(info)
+                    except Exception as e:
+                        logging.error(f"Failed to enrich status: {e}")
+                response["data"] = status_data
             elif command == "ping":
                 response["data"] = "pong"
             elif command == "shutdown":

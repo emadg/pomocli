@@ -57,3 +57,9 @@ def test_cli_shorthand_and_help():
     result = runner.invoke(app, ["ss", "--help"])
     assert result.exit_code == 0
     assert "Start a new pomodoro session" in result.stdout
+
+def test_cli_dash_help():
+    result = runner.invoke(app, ["dash", "--help"])
+    assert result.exit_code == 0
+    assert "--detail" in result.stdout
+    assert "minimal, normal, full" in result.stdout

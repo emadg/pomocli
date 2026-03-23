@@ -528,9 +528,11 @@ def logo():
 
 
 @app.command()
-def dash():
+def dash(
+    detail: str = typer.Option("normal", "--detail", help="Detail level: minimal, normal, full")
+):
     """Open the live TUI dashboard."""
-    run_dashboard()
+    run_dashboard(detail)
 
 
 @app.command()
