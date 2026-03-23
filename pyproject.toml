@@ -63,3 +63,13 @@ rebuild = { shell = "poe kill-all && uv tool install . --force && cd macos/PomoC
 
 # --- Logs ---
 logs = { shell = "log stream --predicate 'process == \"PomoCLITimer\"' --level info" }
+
+# Tasks with env (subtables must follow all inline task defs — otherwise keys leak into the wrong table)
+[tool.poe.tasks.seed-db]
+cmd = "python scripts/seed_test_db.py"
+env = { POMOCLI_DB_PATH = "test_pomocli.db" }
+
+[tool.poe.tasks.pomo-test]
+cmd = "pomo ${args}"
+env = { POMOCLI_DB_PATH = "test_pomocli.db" }
+args = [{ name = "args", default = "report quarter", positional = true }]

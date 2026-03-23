@@ -199,7 +199,6 @@ dependencies = [
 [package.optional-dependencies]
 macos = [
     { name = "pynput" },
-    { name = "rumps" },
 ]
 
 [package.dev-dependencies]
@@ -215,7 +214,6 @@ requires-dist = [
     { name = "pynput", marker = "extra == 'macos'", specifier = ">=1.8.1" },
     { name = "questionary", specifier = ">=2.1.0" },
     { name = "rich", specifier = ">=14.3.3" },
-    { name = "rumps", marker = "extra == 'macos'", specifier = ">=0.4.0" },
     { name = "textual", specifier = ">=8.1.1" },
     { name = "toml", specifier = ">=0.10.2" },
     { name = "typer", specifier = ">=0.24.1" },
@@ -489,15 +487,6 @@ sdist = { url = "https://tr1.jfrog.io/artifactory/api/pypi/pypi/packages/package
 wheels = [
     { url = "https://tr1.jfrog.io/artifactory/api/pypi/pypi/packages/packages/14/25/b208c5683343959b670dc001595f2f3737e051da617f66c31f7c4fa93abc/rich-14.3.3-py3-none-any.whl", hash = "sha256:793431c1f8619afa7d3b52b2cdec859562b950ea0d4b6b505397612db8d5362d" },
 ]
-
-[[package]]
-name = "rumps"
-version = "0.4.0"
-source = { registry = "https://tr1.jfrog.io/artifactory/api/pypi/pypi/simple" }
-dependencies = [
-    { name = "pyobjc-framework-cocoa" },
-]
-sdist = { url = "https://tr1.jfrog.io/artifactory/api/pypi/pypi/packages/packages/b2/e2/2e6a47951290bd1a2831dcc50aec4b25d104c0cf00e8b7868cbd29cf3bfe/rumps-0.4.0.tar.gz", hash = "sha256:17fb33c21b54b1e25db0d71d1d793dc19dc3c0b7d8c79dc6d833d0cffc8b1596" }
 
 [[package]]
 name = "shellingham"
