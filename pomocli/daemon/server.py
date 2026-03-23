@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 import threading
 import sys
+import time
 import logging
 from .timer import PomodoroTimer, TimerState
 from ..db.operations import update_session, log_distraction
