@@ -9,6 +9,8 @@ final class GlobalHotkeyManager {
     private let keyCode: UInt32
     private let modifiers: UInt32
     private let cocoaModifiers: NSEvent.ModifierFlags
+    private var lastCallbackTime: Date = .distantPast
+    private let debounceInterval: TimeInterval = 0.5
 
     init(hotkeyString: String, callback: @escaping () -> Void) {
         self.callback = callback
@@ -24,11 +26,19 @@ final class GlobalHotkeyManager {
 
         if !carbonSuccess {
             NSLog("[PomoCLI Timer] Carbon hotkey registration failed, trying NSEvent global monitor (requires Accessibility permission)")
+            // Only register NSEvent global monitor as fallback if Carbon fails
+            registerCocoaMonitor()
         }
+    }
 
-        // Also register NSEvent global monitor as fallback/supplement
-        // This requires Accessibility permission but is more reliable on modern macOS
-        registerCocoaMonitor()
+    private func invokeCallback() {
+        let now = Date()
+        if now.timeIntervalSince(lastCallbackTime) > debounceInterval {
+            lastCallbackTime = now
+            callback()
+        } else {
+            NSLog("[PomoCLI Timer] Global hotkey debounced")
+        }
     }
 
     func unregister() {
@@ -63,7 +73,7 @@ final class GlobalHotkeyManager {
                 guard let userData else { return OSStatus(eventNotHandledErr) }
                 let manager = Unmanaged<GlobalHotkeyManager>.fromOpaque(userData).takeUnretainedValue()
                 NSLog("[PomoCLI Timer] Global hotkey pressed (Carbon)")
-                manager.callback()
+                manager.invokeCallback()
                 return noErr
             },
             1,
@@ -103,7 +113,7 @@ final class GlobalHotkeyManager {
             let eventMods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if event.keyCode == targetKeyCode && eventMods == requiredModifiers {
                 NSLog("[PomoCLI Timer] Global hotkey pressed (Cocoa monitor)")
-                self?.callback()
+                self?.invokeCallback()
             }
         }
 
