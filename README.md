@@ -146,3 +146,16 @@ Once installed, `pomo start` will auto-launch the status bar app. You can also o
 uv sync
 uv run pytest
 ```
+
+### Using a Test Database
+
+To generate and use a pre-populated test database with realistic data (useful for testing reports and dashboards):
+
+```bash
+# Generate the test database (creates test_pomocli.db)
+POMOCLI_DB_PATH=test_pomocli.db python scripts/seed_test_db.py
+
+# Run commands using the test database
+POMOCLI_DB_PATH=test_pomocli.db uv run pomo report quarter
+POMOCLI_DB_PATH=test_pomocli.db uv run pomo dash
+```
