@@ -22,12 +22,106 @@ from ..config import load_config, save_config, DEFAULT_CONFIG
 from ..utils.git import get_git_context
 from .. import __build__
 
+from typer.core import TyperGroup
+import click
+import typer.rich_utils as ru
+from rich.table import Table
+from rich.panel import Panel
+from rich.text import Text
+
+COMMAND_SHORTHANDS = {
+    "start": "ss",
+    "pause": "pp",
+    "resume": "rr",
+    "stop": "sp",
+    "distract": "dd",
+    "status": "stt",
+    "extend": "ee"
+}
+
+class CustomHelpGroup(TyperGroup):
+    def format_help(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        original_print_commands_panel = ru._print_commands_panel
+        
+        def custom_print_commands_panel(*, name, commands, markup_mode, console, cmd_len):
+            t_styles = {
+                "show_lines": ru.STYLE_COMMANDS_TABLE_SHOW_LINES,
+                "leading": ru.STYLE_COMMANDS_TABLE_LEADING,
+                "box": getattr(ru.box, ru.STYLE_COMMANDS_TABLE_BOX, None),
+                "border_style": ru.STYLE_COMMANDS_TABLE_BORDER_STYLE,
+                "row_styles": ru.STYLE_COMMANDS_TABLE_ROW_STYLES,
+                "pad_edge": ru.STYLE_COMMANDS_TABLE_PAD_EDGE,
+                "padding": ru.STYLE_COMMANDS_TABLE_PADDING,
+            }
+
+            commands_table = Table(
+                highlight=False,
+                show_header=True,
+                expand=True,
+                box=t_styles["box"],
+                show_lines=t_styles["show_lines"],
+                leading=t_styles["leading"],
+                border_style=t_styles["border_style"],
+                row_styles=t_styles["row_styles"],
+                pad_edge=t_styles["pad_edge"],
+                padding=t_styles["padding"],
+            )
+            
+            commands_table.add_column(
+                "Command",
+                style=ru.STYLE_COMMANDS_TABLE_FIRST_COLUMN,
+                no_wrap=True,
+                width=max(cmd_len, 7),
+            )
+            commands_table.add_column(
+                "Shorthand",
+                style="green",
+                no_wrap=True,
+                width=9,
+            )
+            commands_table.add_column("Description", justify="left", no_wrap=False, ratio=10)
+            
+            for command in commands:
+                helptext = command.short_help or command.help or ""
+                command_name = command.name or ""
+                shorthand = COMMAND_SHORTHANDS.get(command_name, "")
+                
+                command_name_text = Text(command_name)
+                if command.deprecated:
+                    command_name_text.stylize(ru.STYLE_DEPRECATED_COMMAND)
+                    
+                commands_table.add_row(
+                    command_name_text,
+                    Text(shorthand),
+                    ru._make_command_help(
+                        help_text=helptext,
+                        markup_mode=markup_mode,
+                    )
+                )
+                
+            if commands_table.row_count:
+                console.print(
+                    Panel(
+                        commands_table,
+                        border_style=ru.STYLE_COMMANDS_PANEL_BORDER,
+                        title=name,
+                        title_align=ru.ALIGN_COMMANDS_PANEL,
+                    )
+                )
+                
+        ru._print_commands_panel = custom_print_commands_panel
+        try:
+            super().format_help(ctx, formatter)
+        finally:
+            ru._print_commands_panel = original_print_commands_panel
+
 app = typer.Typer(
     name="pomo",
     help="A lightweight, feature-rich CLI Pomodoro application.",
     add_completion=True,
     no_args_is_help=False,
     context_settings={"help_option_names": ["-h", "--help"]},
+    cls=CustomHelpGroup,
 )
 console = Console()
 client = DaemonClient()
@@ -175,6 +269,7 @@ def interactive_mode() -> None:
         "Stop session": "stop",
         "Kill session": "kill",
         "Log distraction": "distract",
+        "Extend session": "extend",
         # --- Info ---
         "Show status": "status",
         "View report": "report",
@@ -227,6 +322,8 @@ def interactive_mode() -> None:
         _stop_cmd_impl(skip_confirm=True)
     elif cmd == "kill":
         kill()
+    elif cmd == "extend":
+        _extend_cmd_impl()
     elif cmd == "status":
         _status_cmd_impl()
     elif cmd == "dash":
@@ -354,7 +451,7 @@ def start(
     """Start a new pomodoro session."""
     _start_cmd_impl(task, project, duration, estimate, last, tag)
 
-@app.command(name="ss")
+@app.command(name="ss", hidden=True)
 def start_shorthand(
     task: Optional[str] = typer.Argument(
         None, help="Name of the task", autocompletion=complete_tasks
@@ -401,7 +498,7 @@ def pause():
     """Pause the current session."""
     _pause_cmd_impl()
 
-@app.command(name="pp")
+@app.command(name="pp", hidden=True)
 def pause_shorthand():
     """Shorthand for pause."""
     _pause_cmd_impl()
@@ -419,7 +516,7 @@ def resume():
     """Resume a paused session."""
     _resume_cmd_impl()
 
-@app.command(name="rr")
+@app.command(name="rr", hidden=True)
 def resume_shorthand():
     """Shorthand for resume."""
     _resume_cmd_impl()
@@ -439,7 +536,7 @@ def stop(
     """Stop and save the current session."""
     _stop_cmd_impl(yes)
 
-@app.command(name="sp")
+@app.command(name="sp", hidden=True)
 def stop_shorthand(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
 ):
@@ -479,7 +576,7 @@ def distract(
     """Log a distraction during the current session."""
     _distract_cmd_impl(description)
 
-@app.command(name="dd")
+@app.command(name="dd", hidden=True)
 def distract_shorthand(
     description: Optional[str] = typer.Argument(
         None, help="Short description of the distraction"
@@ -504,11 +601,30 @@ def _distract_cmd_impl(description):
 
 
 @app.command()
+def extend():
+    """Extend the current session duration."""
+    _extend_cmd_impl()
+
+@app.command(name="ee", hidden=True)
+def extend_shorthand():
+    """Shorthand for extend."""
+    _extend_cmd_impl()
+
+def _extend_cmd_impl():
+    response = client.extend()
+    if response.get("status") == "ok":
+        extended_by = response.get("extended_by", 0)
+        console.print(f"[bold green]Session extended by {extended_by}m.[/bold green]")
+    else:
+        console.print(f"[bold red]Error: {response.get('message')}[/bold red]")
+
+
+@app.command()
 def status():
     """Show current timer status."""
     _status_cmd_impl()
 
-@app.command(name="stt")
+@app.command(name="stt", hidden=True)
 def status_shorthand():
     """Shorthand for status."""
     _status_cmd_impl()

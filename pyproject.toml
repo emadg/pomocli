@@ -49,7 +49,8 @@ test = "pytest"
 
 # --- CLI ---
 version = "pomo --version"
-install-cli = { shell = "poe stamp && uv tool install . --force && echo \"Installed pomocli $(python scripts/stamp_version.py)\"" }
+# --reinstall implies --refresh so the tool env rebuilds from the stamped wheel; --force ensures the tool entry is updated.
+install-cli = { shell = "poe stamp && uv tool install . --reinstall --force && echo \"\" && echo \"On PATH:\" && pomo -V" }
 
 # --- Daemon management ---
 kill-daemon = { shell = "pkill -f 'pomocli.daemon' || echo 'No daemon running'" }
@@ -63,7 +64,7 @@ clean-app = { shell = "cd macos/PomoCLITimer && make clean" }
 launch-app = { shell = "open -g \"$HOME/Applications/PomoCLI Timer.app\"" }
 
 # --- Full rebuild (kill everything, rebuild both, relaunch) ---
-rebuild = { shell = "poe stamp && poe kill-all && uv tool install . --force && cd macos/PomoCLITimer && make install && echo \"Rebuild complete. Installed version $(python ../../scripts/stamp_version.py). Run: pomo start\"" }
+rebuild = { shell = "poe stamp && poe kill-all && uv tool install . --reinstall --force && cd macos/PomoCLITimer && make install && echo \"\" && echo \"CLI on PATH:\" && pomo -V && echo \"Run: pomo start\"" }
 
 # --- Logs ---
 logs = { shell = "log stream --predicate 'process == \"PomoCLITimer\"' --level info" }

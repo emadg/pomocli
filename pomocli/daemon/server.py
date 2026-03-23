@@ -58,7 +58,7 @@ class DaemonServer:
 
     def _stop_session(self):
         if self.timer.session_id:
-            logged = self.timer.duration - self.timer.time_left
+            logged = min(self.timer.duration - self.timer.time_left, self.timer.focus_duration)
             update_session(self.timer.session_id, "stopped", logged, end_time=True)
         self.timer.stop()
 
@@ -71,7 +71,7 @@ class DaemonServer:
         cfg = load_config()
         extend = cfg.get("distraction_extend_minutes", 0)
         if extend and extend > 0:
-            self.timer.add_time(extend)
+            self.timer.add_time(extend, counts_as_focus=False)
 
     def _on_distract(self):
         if self.timer.session_id and self.timer.state == TimerState.RUNNING:
@@ -85,7 +85,7 @@ class DaemonServer:
     def _on_complete(self):
         if self.timer.session_id:
             update_session(
-                self.timer.session_id, "completed", self.timer.duration, end_time=True
+                self.timer.session_id, "completed", self.timer.focus_duration, end_time=True
             )
             play_sound("complete")
 
@@ -112,14 +112,14 @@ class DaemonServer:
                 self.timer.resume()
             elif command == "stop":
                 if self.timer.session_id:
-                    logged = self.timer.duration - self.timer.time_left
+                    logged = min(self.timer.duration - self.timer.time_left, self.timer.focus_duration)
                     update_session(
                         self.timer.session_id, "stopped", logged, end_time=True
                     )
                 self.timer.stop()
             elif command == "kill":
                 if self.timer.session_id:
-                    logged = self.timer.duration - self.timer.time_left
+                    logged = min(self.timer.duration - self.timer.time_left, self.timer.focus_duration)
                     update_session(
                         self.timer.session_id, "killed", logged, end_time=True
                     )
@@ -134,6 +134,23 @@ class DaemonServer:
                     response = {
                         "status": "error",
                         "message": "No active session running",
+                    }
+            elif command == "extend":
+                if self.timer.session_id and self.timer.state in (TimerState.RUNNING, TimerState.PAUSED):
+                    cfg = load_config()
+                    extend = cfg.get("distraction_extend_minutes", 0)
+                    if extend and extend > 0:
+                        self.timer.add_time(extend, counts_as_focus=True)
+                        response["extended_by"] = extend
+                    else:
+                        response = {
+                            "status": "error",
+                            "message": "Extension time is configured to 0",
+                        }
+                else:
+                    response = {
+                        "status": "error",
+                        "message": "No active session",
                     }
             elif command == "status":
                 status_data = self.timer.get_status()

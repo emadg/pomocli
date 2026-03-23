@@ -71,5 +71,8 @@ class DaemonClient:
     def distract(self, description: Optional[str] = None):
         return self._send_command("distract", {"description": description})
 
+    def extend(self):
+        return self._send_command("extend")
+
     def ping(self):
         return self._send_command("ping")

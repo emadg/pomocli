@@ -12,6 +12,7 @@ class PomodoroTimer:
     def __init__(self):
         self.state = TimerState.STOPPED
         self.duration = 0
+        self.focus_duration = 0
         self.time_left = 0
         self.session_id: Optional[int] = None
         self._thread: Optional[threading.Thread] = None
@@ -22,6 +23,7 @@ class PomodoroTimer:
     def start(self, duration_minutes: int, session_id: int):
         self.stop()
         self.duration = duration_minutes * 60
+        self.focus_duration = self.duration
         self.time_left = self.duration
         self.session_id = session_id
         self.state = TimerState.RUNNING
@@ -45,18 +47,22 @@ class PomodoroTimer:
             self._thread.join(timeout=1.0)
             self._thread = None
         self.time_left = 0
+        self.focus_duration = 0
         self.session_id = None
 
-    def add_time(self, minutes: int):
+    def add_time(self, minutes: int, counts_as_focus: bool = True):
         if self.state in (TimerState.RUNNING, TimerState.PAUSED):
             self.time_left += minutes * 60
             self.duration += minutes * 60
+            if counts_as_focus:
+                self.focus_duration += minutes * 60
 
     def get_status(self) -> dict:
         return {
             "state": self.state.value,
             "time_left": self.time_left,
             "duration": self.duration,
+            "focus_duration": self.focus_duration,
             "session_id": self.session_id
         }
 
