@@ -7,6 +7,22 @@ final class StatusBarController {
     private var currentState: String = "stopped"
     private let client: DaemonClient
 
+    private static let statusIconHeight: CGFloat = 18
+
+    /// PNG from the app bundle (`pomocli-status-icon.png`); falls back to emoji if missing (e.g. `swift run` without bundling).
+    private static func statusBarImage() -> NSImage {
+        let name = "pomocli-status-icon"
+        if let url = Bundle.main.url(forResource: name, withExtension: "png"),
+           let image = NSImage(contentsOf: url) {
+            let h = statusIconHeight
+            let aspect = image.size.width / max(image.size.height, 1)
+            image.size = NSSize(width: h * aspect, height: h)
+            image.isTemplate = false
+            return image
+        }
+        return emojiImage("🍅")
+    }
+
     private static func emojiImage(_ emoji: String, size: CGFloat = 18) -> NSImage {
         let font = NSFont.systemFont(ofSize: size)
         let attrs: [NSAttributedString.Key: Any] = [.font: font]
@@ -24,7 +40,7 @@ final class StatusBarController {
         self.client = client
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.image = Self.emojiImage("🍅")
+        statusItem.button?.image = Self.statusBarImage()
         statusItem.button?.imagePosition = .imageLeading
         statusItem.button?.title = ""
 
@@ -57,13 +73,13 @@ final class StatusBarController {
 
         switch state {
         case "running":
-            statusItem.button?.image = Self.emojiImage("🍅")
+            statusItem.button?.image = Self.statusBarImage()
             statusItem.button?.title = String(format: " %02d:%02d", mins, secs)
         case "paused":
             statusItem.button?.image = Self.emojiImage("⏸")
             statusItem.button?.title = String(format: " %02d:%02d", mins, secs)
         default:
-            statusItem.button?.image = Self.emojiImage("🍅")
+            statusItem.button?.image = Self.statusBarImage()
             statusItem.button?.title = ""
         }
 
@@ -72,7 +88,7 @@ final class StatusBarController {
 
     func updateDisconnected() {
         currentState = "stopped"
-        statusItem.button?.image = Self.emojiImage("🍅")
+        statusItem.button?.image = Self.statusBarImage()
         statusItem.button?.title = ""
         updateMenuState()
     }
