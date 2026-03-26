@@ -1,30 +1,34 @@
-# Developers Guide
+# Developers guide
 
-## Time and Timezones
+## Time and timezones
 
-- **Storage**: The SQLite database stores all timestamps as **UTC** strings (`YYYY-MM-DD HH:MM:SS`). Do not use SQLite's `date('now')` or `CURRENT_TIMESTAMP` for queries that depend on the user's local day/week boundaries.
-- **UI / Logic**: Everything the user sees or that is defined in calendar terms (e.g. "today", "this month", "last 30 days") uses the **effective display timezone** from the config (`timezone` setting, defaulting to `auto` for system local).
-- **Conversions**: Always use the helpers in `pomocli/time_util.py` (like `utc_now_sql`, `get_display_tz`, `report_time_bounds`, `format_local`) to convert between UTC and the local display timezone, or to generate UTC bounds for SQL queries.
+- **Storage:** SQLite keeps instants as **UTC** strings (`YYYY-MM-DD HH:MM:SS`). Do not rely on SQLite `date('now')` or naive `date(start_time)` for user-facing calendar periods.
+- **Display / rules:** Anything the user reads as a clock time or calendar bucket (“today”, “this month”, “last 30 days”) uses the **effective display timezone** from config (`timezone`, default `auto` = system local).
+- **Code:** Use [`pomocli/time_util.py`](pomocli/time_util.py)—`utc_now_sql`, `get_display_tz`, `parse_stored_utc`, `report_time_bounds`, `retention_cutoff_utc`, `format_local`—instead of duplicating offset or boundary logic.
 
-## Roadmap for new/enhanced features
+## Roadmap
 
-### Completed in Round One
-- [x] enhance auto-completion for commands, help (added `-h` and shell completion)
-- [x] enhance interactive mode (filter down commands as user types, fuzzy search via questionary autocomplete)
-- [x] enhance interactive start for project, task, etc (fuzzy search, arrow navigation, tab completion, etc)
-- [x] shorthand commands, i.e. pomo ss, pp, rr, dd, sp, stt
-- [x] enhance pomo dash, configurable levels of details (`--detail minimal|normal|full`)
-- [x] a better less glitchy distract record shortcut (debounced and Swift-only)
-- [x] improve reporting, show trends over week, month, quarter (added ASCII trend charts)
-- [x] improve logging, add start and end time, date (added standard logging to daemon)
+### Shipped
 
-### Next Steps / Future Rounds
-- customize pomo shortcut keys for start pause, resume, distract
-- add a logo for status bar and cli/dash (an hour glass top shaped as a tomato?)
-- improve the state transitions and recorded logs when session is stopped/idle machine/...
-- adding schedule / adding estimates for tasks / update estimates
-- create a timeline view for days or a week, to see how I spent my time for reflection and updating my approach for next week
-- some advanced features, like scheduling days, weeks for focus work and track time against those schedules and analyze for trends
+- Shell and Typer help (`-h`), command shorthands (`ss`, `pp`, `rr`, …), optional shell completion.
+- Interactive command picker and interactive start (questionary autocomplete for tasks, projects, tags).
+- Live dashboard (`pomo dash`) with `--detail minimal|normal|full`.
+- Reporting with period summaries and ASCII daily trend charts (`today` / `week` / `month` / `quarter` / `all`).
+- Distraction logging from CLI and from the macOS app (debounced, Swift-only global hotkey).
+- Git repo and branch captured on sessions when available.
+- Daemon logging with structured timestamps (UTC in log formatter).
+- **UTC persistence** with **configurable display timezone** for reports and interactive history retention; centralized helpers in `time_util.py`.
+- **Seed script** for realistic demo data; warns when seeding the default DB path without `POMOCLI_DB_PATH`.
+- **Database backups** (`pomocli.db.backup`): optional gzip compression, rotation, manual `pomo backup`, and automatic background runs via the daemon.
 
-Other ideas added:
+### Next up
 
+- **CLI / UX:** Configurable shortcuts for start, pause, resume, distract (beyond Typer shorthands). Polish session lifecycle when stop, kill, and idle interact.
+- **Branding:** Status bar and CLI/dashboard logo refinements.
+- **Tasks:** Surface estimates in the UI; edit or roll up estimates over time.
+- **Insights:** Timeline or week view for reflection; optional goals or planned focus blocks vs. actual time.
+
+### Ideas (backlog)
+
+- Scheduling recurring focus blocks and comparing planned vs. actual.
+- Richer analysis (trends, exports) building on the same UTC + `time_util` boundaries.

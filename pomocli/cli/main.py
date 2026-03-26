@@ -18,6 +18,7 @@ from ..db.operations import (
     add_tags,
 )
 from ..db.connection import init_db, DB_PATH
+from ..db.backup import run_db_backup, resolve_backup_dir
 from ..config import load_config, save_config, DEFAULT_CONFIG
 from ..utils.git import get_git_context
 from .. import __build__
@@ -678,6 +679,29 @@ def report(
     generate_report(period, timezone_config=cfg.get("timezone", "auto"))
 
 
+@app.command()
+def backup():
+    """Create a manual backup of the database."""
+    cfg = load_config()
+    backup_dir = resolve_backup_dir(cfg)
+    max_versions = cfg.get("backup_max_versions", 7)
+    compress = cfg.get("backup_compress", True)
+    
+    try:
+        new_file, deleted = run_db_backup(
+            db_path=DB_PATH,
+            backup_dir=backup_dir,
+            max_versions=max_versions,
+            compress=compress
+        )
+        console.print(f"[bold green]Backup created:[/bold green] {new_file}")
+        if deleted > 0:
+            console.print(f"Rotated {deleted} old backup(s).")
+    except Exception as e:
+        console.print(f"[bold red]Backup failed:[/bold red] {e}")
+        raise typer.Exit(1)
+
+
 @app.command(name="config")
 def config_cmd():
     """Interactively configure pomocli settings."""
@@ -695,6 +719,8 @@ def config_cmd():
         ("idle_timeout", "Idle timeout (seconds)"),
         ("history_retention_days", "History retention (days)"),
         ("distraction_extend_minutes", "Distraction timer extension (minutes, 0 to disable)"),
+        ("backup_interval_days", "Automatic backup interval (days, 0 to disable)"),
+        ("backup_max_versions", "Maximum backup versions to keep"),
     ]
 
     for key, label in numeric_keys:
@@ -731,6 +757,21 @@ def config_cmd():
         raise typer.Abort()
     cfg["timezone"] = tz
 
+    bdir = questionary.text(
+        "Backup directory (leave blank for default):",
+        default=cfg.get("backup_dir", DEFAULT_CONFIG["backup_dir"]),
+    ).ask()
+    if bdir is None:
+        raise typer.Abort()
+    cfg["backup_dir"] = bdir
+
+    bcomp = questionary.confirm(
+        "Compress backups (gzip)?", default=cfg.get("backup_compress", True)
+    ).ask()
+    if bcomp is None:
+        raise typer.Abort()
+    cfg["backup_compress"] = bcomp
+
     # Summary table
     table = Table(title="Configuration Summary")
     table.add_column("Setting", style="cyan")
@@ -740,6 +781,8 @@ def config_cmd():
     table.add_row("Sound enabled", str(cfg["sound_enabled"]))
     table.add_row("Distraction hotkey", cfg["hotkey_distraction"])
     table.add_row("Timezone", cfg["timezone"])
+    table.add_row("Backup directory", cfg["backup_dir"] or "(default)")
+    table.add_row("Compress backups", str(cfg["backup_compress"]))
     console.print(table)
 
     save = questionary.confirm("Save this configuration?", default=True).ask()

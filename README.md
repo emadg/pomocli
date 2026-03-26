@@ -7,11 +7,13 @@ A lightweight, feature-rich CLI Pomodoro timer with git awareness, distraction t
 Requires Python 3.10+.
 
 ```bash
-# Clone and install with uv
-git clone <repo-url> && cd pomocli
+git clone https://github.com/emadg/pomocli.git && cd pomocli
 uv tool install .
+```
 
-# Or install in development mode
+Or install in development mode:
+
+```bash
 uv sync
 ```
 
@@ -31,58 +33,55 @@ pomo status
 pomo stop
 ```
 
-That's it — the background daemon starts automatically when you run `pomo start`. No need to launch it separately.
+The background daemon starts automatically when you run `pomo start`; you do not need to launch it separately.
 
-### Interactive Mode
+### Interactive mode
 
-Run `pomo` with no arguments to get an interactive command picker:
+Run `pomo` with no arguments for the interactive command picker (arrow keys, fuzzy search).
 
-```bash
-pomo
-```
-
-Use arrow keys to select any command — start a session, check status, open the dashboard, change settings, etc.
-
-Running `pomo start` without a task name also drops into interactive mode, where you can pick from recent tasks and projects.
+Running `pomo start` without a task name opens interactive start: pick from recent tasks and projects, set duration and tags.
 
 ### Tips
 
-- **You don't need to run the daemon manually.** `pomo start` spawns it in the background automatically.
-- **Resume your last task** with `pomo start --last` (or `pomo start -l`).
-- **Tag sessions** with `pomo start "Task" -t focus -t deep-work` for filtering in reports.
-- **Log distractions** mid-session with `pomo distract` (description is optional). Each distraction automatically extends the timer by the configured amount (default: 2 minutes).
-- **Git context is captured automatically** — the current repo and branch are recorded with each session.
-- **Customize defaults** with `pomo config` (session duration, break time, sound, etc.). Settings are stored in `~/.config/pomocli/config.toml`.
+- **Daemon:** You do not need to run the daemon manually; `pomo start` starts it when needed.
+- **Last task:** `pomo start --last` (or `-l`) resumes the most recently used task.
+- **Tags:** `pomo start "Task" -t focus -t deep-work` attaches tags to the session (stored for each session; useful for your own records and interactive tag hints).
+- **Distractions:** `pomo distract` with an optional description. Each distraction can extend the timer by a configured number of minutes (default: 2).
+- **Git:** Current repo and branch are saved with each session when you are inside a git working tree.
+- **Config:** `pomo config` edits defaults; settings live in `~/.config/pomocli/config.toml`.
+- **Reports:** `pomo report today` (or `week`, `month`, `quarter`, `all`) uses your configured **timezone** for “today” and calendar periods (see [Configuration](#configuration)).
 
 ## Commands
 
 | Command | Shorthand | Description |
 |---------|-----------|-------------|
 | `pomo` | | Interactive command picker |
-| `pomo start [TASK]` | `ss` | Start a pomodoro session |
+| `pomo start [TASK]` | `ss` | Start a Pomodoro session |
 | `pomo pause` | `pp` | Pause the current session |
 | `pomo resume` | `rr` | Resume a paused session |
 | `pomo stop` | `sp` | Stop and save the current session |
-| `pomo kill` | | Abort session without saving as completed |
+| `pomo kill` | | Abort session without marking completed |
 | `pomo distract [DESC]` | `dd` | Log a distraction |
-| `pomo status` | `stt` | Show current timer status |
-| `pomo report [PERIOD]` | | Summary report (`today`, `week`, `month`, `quarter`, or `all`) |
-| `pomo dash` | | Open the live TUI dashboard (supports `--detail minimal|normal|full`) |
-| `pomo config` | | Interactively configure settings |
-| `pomo init` | | Initialize (or reinitialize) the database |
+| `pomo extend` | `ee` | Extend the current session (configured minutes) |
+| `pomo status` | `stt` | Show timer status |
+| `pomo report [PERIOD]` | | Summary report: `today`, `week`, `month`, `quarter`, or `all` |
+| `pomo backup` | | Create a manual database backup |
+| `pomo dash` | | Live TUI dashboard (`--detail minimal`, `normal`, or `full`) |
+| `pomo logo` | | Print the CLI logo |
+| `pomo config` | | Interactive configuration |
+| `pomo init` | | Create or reinitialize the database |
 
-*Tip: You can always use `-h` instead of `--help` for any command.*
+Use `-h` or `--help` on any command for options.
 
-### Shell Completion
-
-Pomocli supports shell completion for bash, zsh, fish, and powershell. To install it, run:
+### Shell completion
 
 ```bash
 pomo --show-completion
-# Follow the instructions for your shell
 ```
 
-### `pomo start` Options
+Follow the printed instructions for bash, zsh, fish, or PowerShell.
+
+### `pomo start` options
 
 ```
 pomo start "Task name" [OPTIONS]
@@ -97,48 +96,74 @@ Options:
 
 ## Configuration
 
-Run `pomo config` to set preferences interactively. Config lives at `~/.config/pomocli/config.toml`.
+Run `pomo config` interactively, or edit `~/.config/pomocli/config.toml`.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `session_duration` | 25 | Pomodoro duration in minutes |
-| `break_duration` | 5 | Break duration in minutes |
-| `idle_timeout` | 300 | Seconds of idle before auto-pause (macOS) |
-| `sound_enabled` | true | Play sound notifications |
-| `history_retention_days` | 30 | Days of task history shown in interactive prompts |
-| `hotkey_distraction` | `cmd+shift+d` | Global hotkey for logging distractions (macOS app) |
-| `distraction_extend_minutes` | 2 | Minutes added to timer per distraction (0 to disable) |
+| `session_duration` | 25 | Pomodoro length (minutes) |
+| `break_duration` | 5 | Break length (minutes) |
+| `idle_timeout` | 300 | Seconds idle before auto-pause (macOS, with status bar app) |
+| `sound_enabled` | true | Sound notifications |
+| `history_retention_days` | 30 | How far back recent tasks/projects are shown in interactive start |
+| `hotkey_distraction` | `cmd+shift+d` | Global distraction hotkey (macOS app) |
+| `distraction_extend_minutes` | 2 | Minutes added per distraction (`0` to disable) |
+| `timezone` | `auto` | Display and calendar semantics for reports and retention: `auto` uses system local time, or set an IANA name (e.g. `Europe/Berlin`) |
+| `backup_interval_days` | 0 | Minimum days between automatic backups (`0` to disable) |
+| `backup_max_versions` | 7 | Maximum backup files to keep |
+| `backup_dir` | `""` | Directory for backups (empty uses `~/.config/pomocli/backups`) |
+| `backup_compress` | true | Gzip backups (`.db.gz`) to save space |
 
-## Data Storage
+**Time storage:** Session and task timestamps are stored in **UTC** in the database. Reports and “last N days” history use the effective timezone above so “today” and trend buckets match your local calendar.
 
-Everything lives under `~/.config/pomocli/`:
+## Data storage
 
-- `pomocli.db` — SQLite database (sessions, tasks, distractions, tags)
-- `config.toml` — User preferences
+Everything under `~/.config/pomocli/`:
 
-## macOS Status Bar App
+| Path | Purpose |
+|------|---------|
+| `pomocli.db` | SQLite: tasks, sessions, tags, distractions |
+| `config.toml` | User preferences |
+| `backups/` | Default directory for automatic and manual backups |
 
-PomoCLI Timer is a native Swift app that adds a status bar icon with live countdown, a configurable global hotkey for logging distractions, and idle detection — no Python dependencies or Accessibility permissions required.
+Override the database location for backups or demos:
 
-### Build & Install
+```bash
+export POMOCLI_DB_PATH=/path/to/custom.db
+pomo report week
+```
+
+### Database backups
+
+Pomocli can automatically back up your database using the SQLite backup API (ensuring consistency even while the timer runs).
+
+- **Automatic:** Set `backup_interval_days` > 0 in `pomo config`. The daemon will check periodically and create a backup if the interval has passed.
+- **Manual:** Run `pomo backup` at any time (or via cron).
+- **Compression:** Backups are gzipped by default (`.db.gz`). To restore, just unzip it: `gunzip -c pomocli-YYYYMMDD-HHMMSS.db.gz > restored.db`.
+- **Rotation:** Old backups are automatically deleted so only the newest `backup_max_versions` remain.
+
+## macOS status bar app
+
+**PomoCLI Timer** is a small Swift app: menu-bar countdown, global distraction hotkey, and idle detection—without Python or Accessibility permissions for those features.
+
+### Build and install
 
 Requires Xcode Command Line Tools (`xcode-select --install`).
 
 ```bash
 cd macos/PomoCLITimer
-make install    # builds, bundles, copies to ~/Applications/
+make install    # build, bundle, copy to ~/Applications/
 ```
 
-Once installed, `pomo start` will auto-launch the status bar app. You can also open it manually or add it to Login Items.
+After install, `pomo start` can auto-launch the app; you can also open it manually or add it to Login Items.
 
 ### Features
 
-- **Status bar icon** — shows `🍅` when idle, `🍅 MM:SS` countdown when running, `⏸ MM:SS` when paused
-- **Menu controls** — Pause/Resume, Stop, Quit
-- **Global hotkey** — press Cmd+Shift+D (configurable via `hotkey_distraction` in config) to log a distraction
-- **Idle detection** — auto-pauses the timer when you're away (uses Quartz, no Accessibility permissions needed)
+- **Menu bar** — idle `🍅`; running `🍅 MM:SS`; paused `⏸ MM:SS`
+- **Menu** — Pause / Resume, Stop, Quit
+- **Global hotkey** — default Cmd+Shift+D (`hotkey_distraction` in config)
+- **Idle detection** — auto-pause when away (Quartz-based)
 
-*Note: Global hotkeys and macOS status bar integration are provided exclusively by the Swift app. The Python daemon no longer attempts to capture global hotkeys to avoid Accessibility permission issues and duplicate logging.*
+Global hotkeys and menu-bar integration are provided by the Swift app only; the Python daemon does not register global hotkeys.
 
 ## Development
 
@@ -147,15 +172,16 @@ uv sync
 uv run pytest
 ```
 
-### Using a Test Database
+### Demo / test database
 
-To generate and use a pre-populated test database with realistic data (useful for testing reports and dashboards):
+`scripts/seed_test_db.py` fills a database with varied tasks, sessions (completed, stopped, killed), tags, distractions, and git fields—useful for reports and the dashboard.
+
+**Always set `POMOCLI_DB_PATH`** so you do not overwrite your real database:
 
 ```bash
-# Generate the test database (creates test_pomocli.db)
-POMOCLI_DB_PATH=test_pomocli.db python scripts/seed_test_db.py
-
-# Run commands using the test database
-POMOCLI_DB_PATH=test_pomocli.db uv run pomo report quarter
-POMOCLI_DB_PATH=test_pomocli.db uv run pomo dash
+POMOCLI_DB_PATH=./demo.db uv run python scripts/seed_test_db.py
+POMOCLI_DB_PATH=./demo.db uv run pomo report week
+POMOCLI_DB_PATH=./demo.db uv run pomo dash
 ```
+
+The script prints a reminder if `POMOCLI_DB_PATH` is unset.

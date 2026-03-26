@@ -10,6 +10,8 @@ import time
 import logging
 from .timer import PomodoroTimer, TimerState
 from ..db.operations import update_session, log_distraction
+from ..db.connection import DB_PATH
+from ..db.backup import maybe_run_automatic_backup
 from ..config import load_config
 from .macos import IdleDetector
 from .. import __build__
@@ -41,6 +43,7 @@ class DaemonServer:
         self.timer.on_complete = self._on_complete
         self._running = False
         self._stop_event = threading.Event()
+        self._last_backup_check = 0.0
 
         cfg = load_config()
 
@@ -213,6 +216,9 @@ class DaemonServer:
 
         signal.signal(signal.SIGTERM, _signal_handler)
         signal.signal(signal.SIGINT, _signal_handler)
+        
+        # Initial backup check
+        self._check_backup()
 
         # Start optional background listeners (no-op if unavailable or on macOS)
         if sys.platform != "darwin":
@@ -234,11 +240,24 @@ class DaemonServer:
                     client_thread.daemon = True
                     client_thread.start()
                 except socket.timeout:
+                    self._check_backup()
                     continue
                 except OSError:
                     break
         finally:
             self.stop()
+
+    def _check_backup(self):
+        """Periodically check if an automatic backup is due (max once per 6 hours)."""
+        now = time.time()
+        if now - self._last_backup_check > 21600:  # 6 hours
+            self._last_backup_check = now
+            cfg = load_config()
+            try:
+                if maybe_run_automatic_backup(cfg, DB_PATH):
+                    logging.info("Automatic database backup completed successfully")
+            except Exception as e:
+                logging.error(f"Automatic backup failed: {e}")
 
     def stop(self):
         logging.info("Shutting down daemon")

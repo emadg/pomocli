@@ -13,6 +13,10 @@ DEFAULT_CONFIG = {
     "hotkey_distraction": "cmd+shift+d",
     "distraction_extend_minutes": 2,
     "timezone": "auto",
+    "backup_interval_days": 0,
+    "backup_max_versions": 7,
+    "backup_dir": "",
+    "backup_compress": True,
 }
 
 
