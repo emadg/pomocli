@@ -1,5 +1,11 @@
 # Developers Guide
 
+## Time and Timezones
+
+- **Storage**: The SQLite database stores all timestamps as **UTC** strings (`YYYY-MM-DD HH:MM:SS`). Do not use SQLite's `date('now')` or `CURRENT_TIMESTAMP` for queries that depend on the user's local day/week boundaries.
+- **UI / Logic**: Everything the user sees or that is defined in calendar terms (e.g. "today", "this month", "last 30 days") uses the **effective display timezone** from the config (`timezone` setting, defaulting to `auto` for system local).
+- **Conversions**: Always use the helpers in `pomocli/time_util.py` (like `utc_now_sql`, `get_display_tz`, `report_time_bounds`, `format_local`) to convert between UTC and the local display timezone, or to generate UTC bounds for SQL queries.
+
 ## Roadmap for new/enhanced features
 
 ### Completed in Round One
@@ -19,3 +25,6 @@
 - adding schedule / adding estimates for tasks / update estimates
 - create a timeline view for days or a week, to see how I spent my time for reflection and updating my approach for next week
 - some advanced features, like scheduling days, weeks for focus work and track time against those schedules and analyze for trends
+
+Other ideas added:
+

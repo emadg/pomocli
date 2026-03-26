@@ -2,6 +2,7 @@ import sqlite3
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from .connection import get_connection
+from ..time_util import utc_now_sql, retention_cutoff_utc, get_display_tz
 
 def get_or_create_task(task_name: str, project_name: Optional[str] = None, estimated_minutes: Optional[int] = None) -> int:
     """Get an existing task ID or create a new one."""
@@ -18,11 +19,11 @@ def get_or_create_task(task_name: str, project_name: Optional[str] = None, estim
     if result:
         task_id = result['id']
         # Update last_accessed
-        cursor.execute("UPDATE tasks SET last_accessed = CURRENT_TIMESTAMP WHERE id = ?", (task_id,))
+        cursor.execute("UPDATE tasks SET last_accessed = ? WHERE id = ?", (utc_now_sql(), task_id))
     else:
         cursor.execute(
-            "INSERT INTO tasks (project_name, task_name, estimated_minutes) VALUES (?, ?, ?)",
-            (project_name, task_name, estimated_minutes)
+            "INSERT INTO tasks (project_name, task_name, estimated_minutes, last_accessed) VALUES (?, ?, ?, ?)",
+            (project_name, task_name, estimated_minutes, utc_now_sql())
         )
         task_id = cursor.lastrowid
         
@@ -36,8 +37,8 @@ def create_session(task_id: Optional[int], git_repo: Optional[str] = None, git_b
     cursor = conn.cursor()
     
     cursor.execute(
-        "INSERT INTO sessions (task_id, start_time, git_repo, git_branch) VALUES (?, CURRENT_TIMESTAMP, ?, ?)",
-        (task_id, git_repo, git_branch)
+        "INSERT INTO sessions (task_id, start_time, git_repo, git_branch) VALUES (?, ?, ?, ?)",
+        (task_id, utc_now_sql(), git_repo, git_branch)
     )
     session_id = cursor.lastrowid
     
@@ -54,7 +55,8 @@ def update_session(session_id: int, status: str, duration_logged: int, end_time:
     params = [status, duration_logged]
     
     if end_time:
-        query += ", end_time = CURRENT_TIMESTAMP"
+        query += ", end_time = ?"
+        params.append(utc_now_sql())
         
     query += " WHERE id = ?"
     params.append(session_id)
@@ -69,8 +71,8 @@ def log_distraction(session_id: int, description: Optional[str] = None):
     cursor = conn.cursor()
     
     cursor.execute(
-        "INSERT INTO distractions (session_id, description) VALUES (?, ?)",
-        (session_id, description)
+        "INSERT INTO distractions (session_id, timestamp, description) VALUES (?, ?, ?)",
+        (session_id, utc_now_sql(), description)
     )
     
     conn.commit()
@@ -114,15 +116,17 @@ def get_session_task_info(session_id: int) -> dict:
         }
     return {}
 
-def get_recent_tasks(limit: int = 10, days: int | None = None) -> List[sqlite3.Row]:
+def get_recent_tasks(limit: int = 10, days: int | None = None, timezone_config: str = "auto") -> List[sqlite3.Row]:
     """Get recently accessed tasks for auto-completion."""
     conn = get_connection()
     cursor = conn.cursor()
 
     if days is not None:
+        tz = get_display_tz(timezone_config)
+        cutoff = retention_cutoff_utc(days, tz)
         cursor.execute(
-            f"SELECT * FROM tasks WHERE last_accessed >= datetime('now', '-{int(days)} days') ORDER BY last_accessed DESC LIMIT ?",
-            (limit,),
+            "SELECT * FROM tasks WHERE last_accessed >= ? ORDER BY last_accessed DESC LIMIT ?",
+            (cutoff, limit,),
         )
     else:
         cursor.execute(
@@ -134,15 +138,17 @@ def get_recent_tasks(limit: int = 10, days: int | None = None) -> List[sqlite3.R
     return tasks
 
 
-def get_recent_projects(limit: int = 10, days: int | None = None) -> List[str]:
+def get_recent_projects(limit: int = 10, days: int | None = None, timezone_config: str = "auto") -> List[str]:
     """Get recently used project names."""
     conn = get_connection()
     cursor = conn.cursor()
 
     if days is not None:
+        tz = get_display_tz(timezone_config)
+        cutoff = retention_cutoff_utc(days, tz)
         cursor.execute(
-            f"SELECT DISTINCT project_name FROM tasks WHERE project_name IS NOT NULL AND last_accessed >= datetime('now', '-{int(days)} days') ORDER BY last_accessed DESC LIMIT ?",
-            (limit,),
+            "SELECT DISTINCT project_name FROM tasks WHERE project_name IS NOT NULL AND last_accessed >= ? ORDER BY last_accessed DESC LIMIT ?",
+            (cutoff, limit,),
         )
     else:
         cursor.execute(
@@ -171,20 +177,3 @@ def get_recent_tag_names(limit: int = 30) -> List[str]:
     rows = cursor.fetchall()
     conn.close()
     return [row["tag_name"] for row in rows]
-    """Get recently used project names."""
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    if days is not None:
-        cursor.execute(
-            f"SELECT DISTINCT project_name FROM tasks WHERE project_name IS NOT NULL AND last_accessed >= datetime('now', '-{int(days)} days') ORDER BY last_accessed DESC LIMIT ?",
-            (limit,),
-        )
-    else:
-        cursor.execute(
-            "SELECT DISTINCT project_name FROM tasks WHERE project_name IS NOT NULL ORDER BY last_accessed DESC LIMIT ?",
-            (limit,),
-        )
-    rows = cursor.fetchall()
-    conn.close()
-    return [row["project_name"] for row in rows]

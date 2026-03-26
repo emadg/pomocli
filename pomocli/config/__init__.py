@@ -12,6 +12,7 @@ DEFAULT_CONFIG = {
     "history_retention_days": 30,
     "hotkey_distraction": "cmd+shift+d",
     "distraction_extend_minutes": 2,
+    "timezone": "auto",
 }
 
 

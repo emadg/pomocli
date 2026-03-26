@@ -1,26 +1,27 @@
 from rich.console import Console
 from rich.table import Table
 from typing import List
+from collections import defaultdict
 import sqlite3
 from ..db.connection import get_connection
+from ..time_util import report_time_bounds, get_display_tz, parse_stored_utc
 
 console = Console()
 
-def generate_report(period: str = "today"):
+def generate_report(period: str = "today", *, timezone_config: str = "auto"):
     """Generate a summary report for the given period."""
     conn = get_connection()
     cursor = conn.cursor()
     
-    if period == "today":
-        date_filter = "date(start_time) = date('now')"
-    elif period == "week":
-        date_filter = "date(start_time) >= date('now', '-7 days')"
-    elif period == "month":
-        date_filter = "date(start_time) >= date('now', 'start of month')"
-    elif period == "quarter":
-        date_filter = "date(start_time) >= date('now', '-90 days')"
+    tz = get_display_tz(timezone_config)
+    start_utc, end_utc = report_time_bounds(period, tz)
+    
+    if start_utc and end_utc:
+        date_filter = "s.start_time >= ? AND s.start_time < ?"
+        params = (start_utc, end_utc)
     else:
         date_filter = "1=1"
+        params = ()
         
     query = f"""
         SELECT 
@@ -36,20 +37,30 @@ def generate_report(period: str = "today"):
         ORDER BY total_duration DESC
     """
     
-    cursor.execute(query)
+    cursor.execute(query, params)
     rows = cursor.fetchall()
     
     trend_query = f"""
         SELECT 
-            date(start_time) as day,
-            SUM(duration_logged) as daily_duration
-        FROM sessions
+            s.start_time,
+            s.duration_logged
+        FROM sessions s
         WHERE {date_filter}
-        GROUP BY day
-        ORDER BY day ASC
     """
-    cursor.execute(trend_query)
-    trend_rows = cursor.fetchall()
+    cursor.execute(trend_query, params)
+    raw_trend_rows = cursor.fetchall()
+    
+    # Group by local calendar date in Python
+    daily_totals = defaultdict(int)
+    for r in raw_trend_rows:
+        if not r['start_time']:
+            continue
+        dt_utc = parse_stored_utc(r['start_time'])
+        dt_local = dt_utc.astimezone(tz)
+        local_day = dt_local.date().isoformat()
+        daily_totals[local_day] += (r['duration_logged'] or 0)
+        
+    trend_rows = [{"day": day, "daily_duration": dur} for day, dur in sorted(daily_totals.items())]
     
     conn.close()
     

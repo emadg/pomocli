@@ -151,7 +151,8 @@ def _interactive_start() -> None:
     days = cfg.get("history_retention_days")
 
     # --- task selection ---
-    recent = get_recent_tasks(limit=10, days=days)
+    timezone_config = cfg.get("timezone", "auto")
+    recent = get_recent_tasks(limit=10, days=days, timezone_config=timezone_config)
     task_names = [t["task_name"] for t in recent]
 
     if task_names:
@@ -170,7 +171,7 @@ def _interactive_start() -> None:
         raise typer.Abort()
 
     # --- project selection ---
-    recent_projects = get_recent_projects(limit=10, days=days)
+    recent_projects = get_recent_projects(limit=10, days=days, timezone_config=timezone_config)
     if recent_projects:
         proj_choices = ["No project", "New project"] + recent_projects
         proj_answer = questionary.autocomplete("Select a project:", choices=proj_choices).ask()
@@ -673,7 +674,8 @@ def report(
     ),
 ):
     """Show a summary report of logged time."""
-    generate_report(period)
+    cfg = load_config()
+    generate_report(period, timezone_config=cfg.get("timezone", "auto"))
 
 
 @app.command(name="config")
@@ -721,6 +723,14 @@ def config_cmd():
         raise typer.Abort()
     cfg["hotkey_distraction"] = hotkey
 
+    tz = questionary.text(
+        "Timezone (e.g. auto, Europe/Berlin):",
+        default=cfg.get("timezone", DEFAULT_CONFIG["timezone"]),
+    ).ask()
+    if tz is None:
+        raise typer.Abort()
+    cfg["timezone"] = tz
+
     # Summary table
     table = Table(title="Configuration Summary")
     table.add_column("Setting", style="cyan")
@@ -729,6 +739,7 @@ def config_cmd():
         table.add_row(label, str(cfg[key]))
     table.add_row("Sound enabled", str(cfg["sound_enabled"]))
     table.add_row("Distraction hotkey", cfg["hotkey_distraction"])
+    table.add_row("Timezone", cfg["timezone"])
     console.print(table)
 
     save = questionary.confirm("Save this configuration?", default=True).ask()
