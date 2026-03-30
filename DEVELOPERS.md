@@ -17,6 +17,7 @@
 - Distraction logging from CLI and from the macOS app (debounced, Swift-only global hotkey).
 - Git repo and branch captured on sessions when available.
 - Daemon logging with structured timestamps (UTC in log formatter).
+- Improved logo for macos app and the status bar icon
 - **UTC persistence** with **configurable display timezone** for reports and interactive history retention; centralized helpers in `time_util.py`.
 - **Seed script** for realistic demo data; warns when seeding the default DB path without `POMOCLI_DB_PATH`.
 - **Database backups** (`pomocli.db.backup`): optional gzip compression, rotation, manual `pomo backup`, and automatic background runs via the daemon.
@@ -34,8 +35,7 @@
   - Fix the glitchy distract recorder (prevent double beeps, ensure the timer doesn't show the old time before the extension is applied).
   - Add an optional popup from the macOS status bar to capture notes when a distraction occurs (with a toggle in the status bar UI to enable/disable).
 - **macOS Status Bar:**
-  - Add an hourglass/tomato logo for the status bar and CLI dashboard.
-  - Add options for how the timer is displayed in the menu bar: show timer, hide timer (just show active icon), or change icon color (e.g., green to red) as the focus block progresses.
+  - Add options for how the timer is displayed in the menu bar: show timer, hide timer and just show the session duration (just show active icon), or change icon color (e.g., green to red) as the focus block progresses.
 
 ### Future Features / Backlog
 
@@ -50,3 +50,7 @@
 - **Insights & Planning:**
   - Create a timeline view for days or weeks to reflect on how time was spent and adjust approaches.
   - Advanced scheduling: plan days/weeks for focus work, track actual time against those schedules, and analyze trends.
+  - Record all the events for a running session: pause, resume, stop, kill, extend, etc. for later insights
+- **Aesthetics and UX**
+  - add a black tomato PNG logo for status bar for macos's Dark mode
+  - adding menu control to open a new terminal shortcut key?

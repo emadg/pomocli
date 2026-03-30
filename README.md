@@ -185,3 +185,74 @@ POMOCLI_DB_PATH=./demo.db uv run pomo dash
 ```
 
 The script prints a reminder if `POMOCLI_DB_PATH` is unset.
+
+
+Component diagram for the app:
+
+```mermaid
+flowchart TB
+  subgraph clients["Clients"]
+    CLI["cli/main.py<br/>Typer `pomo`"]
+    SwiftApp["macOS PomoCLITimer<br/>(Swift)"]
+  end
+
+  subgraph daemon_pkg["pomocli.daemon"]
+    PyClient["client.py<br/>DaemonClient"]
+    Server["server.py<br/>DaemonServer"]
+    Timer["timer.py<br/>PomodoroTimer"]
+    Idle["macos.py<br/>IdleDetector"]
+  end
+
+  subgraph ui_pkg["pomocli.ui"]
+    Dash["dashboard.py<br/>(Textual)"]
+    Reports["reports.py<br/>(Rich)"]
+    Logo["logo.py"]
+  end
+
+  subgraph data_pkg["pomocli.db"]
+    Conn["connection.py + schema.sql"]
+    Ops["operations.py"]
+    Backup["backup.py"]
+  end
+
+  subgraph shared["Shared"]
+    Config["config/<br/>config.toml"]
+    TimeUtil["time_util.py"]
+    Git["utils/git.py"]
+  end
+
+  Sock["Unix socket<br/>~/.config/pomocli/pomo.sock"]
+  SQLite[("SQLite<br/>pomocli.db")]
+
+  CLI --> PyClient
+  CLI --> Ops
+  CLI --> Conn
+  CLI --> Backup
+  CLI --> Config
+  CLI --> Git
+  CLI --> Reports
+  CLI --> Dash
+  CLI --> Logo
+
+  Dash --> PyClient
+
+  SwiftApp --> Sock
+
+  PyClient <-->|JSON over AF_UNIX| Sock
+  Server <-->|listen / handle| Sock
+  Server --> Timer
+  Server --> Ops
+  Server --> Backup
+  Server --> Config
+  Server --> Idle
+  Server -.->|DB path only| Conn
+
+  Ops --> Conn
+  Ops --> TimeUtil
+  Reports --> Conn
+  Reports --> TimeUtil
+  Backup --> SQLite
+  Conn --> SQLite
+
+  Timer -.->|session lifecycle callbacks| Server
+```
