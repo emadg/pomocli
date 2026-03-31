@@ -19,11 +19,13 @@ from ..db.operations import (
     add_tags,
     task_name_exists,
     project_name_exists,
+    get_sessions_in_range,
 )
 from ..db.connection import init_db, DB_PATH
 from ..db.backup import run_db_backup, resolve_backup_dir
 from ..config import load_config, save_config, DEFAULT_CONFIG
 from ..utils.git import get_git_context
+from ..time_util import report_time_bounds, get_display_tz, format_local
 from .. import __build__
 
 from typer.core import TyperGroup
@@ -367,6 +369,7 @@ def interactive_mode() -> None:
         "Extend session": "extend",
         # --- Info ---
         "Show status": "status",
+        "List today's sessions": "list",
         "View report": "report",
         "Open dashboard": "dash",
         # --- Settings ---
@@ -425,6 +428,8 @@ def interactive_mode() -> None:
         _extend_cmd_impl()
     elif cmd == "status":
         _status_cmd_impl()
+    elif cmd == "list":
+        list_cmd()
     elif cmd == "dash":
         run_dashboard()
 
@@ -774,6 +779,63 @@ def report(
     """Show a summary report of logged time."""
     cfg = load_config()
     generate_report(period, timezone_config=cfg.get("timezone", "auto"))
+
+
+@app.command(name="list")
+def list_cmd():
+    """List today's sessions with status, focus rate, and notes."""
+    cfg = load_config()
+    timezone_config = cfg.get("timezone", "auto")
+    tz = get_display_tz(timezone_config)
+    start_utc, end_utc = report_time_bounds("today", tz)
+    if not start_utc or not end_utc:
+        console.print("[bold red]Could not resolve time range for today.[/bold red]")
+        raise typer.Exit(1)
+
+    rows = get_sessions_in_range(start_utc, end_utc)
+    if not rows:
+        console.print("No sessions logged today.")
+        return
+
+    table = Table(title="Today's Sessions")
+    table.add_column("ID", justify="right", style="cyan")
+    table.add_column("Start", style="cyan")
+    table.add_column("Project", style="magenta")
+    table.add_column("Task", style="magenta")
+    table.add_column("Status", style="green")
+    table.add_column("Logged", justify="right", style="yellow")
+    table.add_column("Distract", justify="right", style="yellow")
+    table.add_column("Notes", style="white")
+
+    completed = 0
+    total_logged = 0
+    for row in rows:
+        logged = int(row["duration_logged"] or 0)
+        total_logged += logged
+        if row["status"] == "completed":
+            completed += 1
+        mins = logged // 60
+        start_local = format_local(row["start_time"], timezone_config)
+        notes = row["distraction_notes"] or "-"
+        project = row["project_name"] or "-"
+        table.add_row(
+            str(row["id"]),
+            start_local,
+            project,
+            row["task_name"] or "-",
+            row["status"],
+            f"{mins}m",
+            str(row["distraction_count"] or 0),
+            notes,
+        )
+
+    console.print(table)
+    focus_rate = (completed / len(rows)) * 100
+    total_minutes = total_logged // 60
+    console.print(
+        f"[bold]Focus rate:[/bold] {focus_rate:.0f}% ({completed}/{len(rows)} completed) | "
+        f"[bold]Total logged:[/bold] {total_minutes}m"
+    )
 
 
 @app.command()

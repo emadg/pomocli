@@ -1,5 +1,6 @@
 import pytest
 import types
+from datetime import timezone
 from typer.testing import CliRunner
 from pomocli.cli.main import app
 from pomocli.cli import main
@@ -126,3 +127,43 @@ def test_interactive_mode_ctrl_c_exits_cleanly(mocker, monkeypatch):
     result = runner.invoke(app, [])
     assert result.exit_code == 0
     assert "Cancelled." in result.stdout
+
+
+def test_cli_list_command(mocker):
+    mocker.patch("pomocli.cli.main.load_config", return_value={"timezone": "auto"})
+    mocker.patch("pomocli.cli.main.get_display_tz", return_value=timezone.utc)
+    mocker.patch(
+        "pomocli.cli.main.report_time_bounds",
+        return_value=("2026-01-01 00:00:00", "2026-01-02 00:00:00"),
+    )
+    mocker.patch(
+        "pomocli.cli.main.get_sessions_in_range",
+        return_value=[
+            {
+                "id": 7,
+                "start_time": "2026-01-01 08:00:00",
+                "project_name": "Pomocli",
+                "task_name": "Write docs",
+                "status": "completed",
+                "duration_logged": 1500,
+                "distraction_count": 1,
+                "distraction_notes": "Slack ping",
+            },
+            {
+                "id": 8,
+                "start_time": "2026-01-01 09:00:00",
+                "project_name": None,
+                "task_name": "Review PR",
+                "status": "stopped",
+                "duration_logged": 600,
+                "distraction_count": 0,
+                "distraction_notes": None,
+            },
+        ],
+    )
+
+    result = runner.invoke(app, ["list"])
+    assert result.exit_code == 0
+    assert "Today's Sessions" in result.stdout
+    assert "Focus rate:" in result.stdout
+    assert "50% (1/2 completed)" in result.stdout

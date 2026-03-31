@@ -29,7 +29,7 @@ def get_or_create_task(task_name: str, project_name: Optional[str] = None, estim
         
     conn.commit()
     conn.close()
-    return task_id
+    return int(task_id)
 
 def create_session(task_id: Optional[int], git_repo: Optional[str] = None, git_branch: Optional[str] = None) -> int:
     """Create a new session and return its ID."""
@@ -44,6 +44,8 @@ def create_session(task_id: Optional[int], git_repo: Optional[str] = None, git_b
     
     conn.commit()
     conn.close()
+    if session_id is None:
+        raise RuntimeError("Failed to create session row")
     return session_id
 
 def update_session(session_id: int, status: str, duration_logged: int, end_time: bool = False):
@@ -240,6 +242,41 @@ def get_session_events(session_id: int) -> List[sqlite3.Row]:
         ORDER BY timestamp ASC, id ASC
         """,
         (session_id,),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+def get_sessions_in_range(start_utc: str, end_utc: str) -> List[sqlite3.Row]:
+    """Get sessions in a UTC interval with task and distraction summaries."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT
+            s.id,
+            s.start_time,
+            s.end_time,
+            s.duration_logged,
+            s.status,
+            t.task_name,
+            t.project_name,
+            COUNT(d.id) AS distraction_count,
+            GROUP_CONCAT(
+                CASE
+                    WHEN d.description IS NOT NULL AND TRIM(d.description) != '' THEN d.description
+                END,
+                ' | '
+            ) AS distraction_notes
+        FROM sessions s
+        LEFT JOIN tasks t ON s.task_id = t.id
+        LEFT JOIN distractions d ON d.session_id = s.id
+        WHERE s.start_time >= ? AND s.start_time < ?
+        GROUP BY s.id
+        ORDER BY s.start_time DESC
+        """,
+        (start_utc, end_utc),
     )
     rows = cursor.fetchall()
     conn.close()
