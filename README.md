@@ -47,8 +47,10 @@ Running `pomo start` without a task name opens interactive start: pick from rece
 - **Last task:** `pomo start --last` (or `-l`) resumes the most recently used task.
 - **Tags:** `pomo start "Task" -t focus -t deep-work` attaches tags to the session (stored for each session; useful for your own records and interactive tag hints).
 - **Distractions:** `pomo distract` with an optional description. Each distraction can extend the timer by a configured number of minutes (default: 2).
+- **Lifecycle events:** Session events (`start`, `pause`, `resume`, `extend`, `stop`, `kill`, `idle`, `complete`) are logged for later analysis.
 - **Git:** Current repo and branch are saved with each session when you are inside a git working tree.
 - **Config:** `pomo config` edits defaults; settings live in `~/.config/pomocli/config.toml`.
+- **Interactive cancel:** Use `Ctrl-C` to cleanly exit interactive picker/start/config flows.
 - **Reports:** `pomo report today` (or `week`, `month`, `quarter`, `all`) uses your configured **timezone** for “today” and calendar periods (see [Configuration](#configuration)).
 
 ## Commands

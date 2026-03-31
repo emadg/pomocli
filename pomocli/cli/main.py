@@ -6,6 +6,7 @@ import subprocess
 import sys
 import os
 import time
+from functools import lru_cache
 
 from ..daemon.client import DaemonClient, is_daemon_running
 from ..db.operations import (
@@ -16,6 +17,8 @@ from ..db.operations import (
     get_recent_tag_names,
     log_distraction,
     add_tags,
+    task_name_exists,
+    project_name_exists,
 )
 from ..db.connection import init_db, DB_PATH
 from ..db.backup import run_db_backup, resolve_backup_dir
@@ -128,11 +131,31 @@ console = Console()
 client = DaemonClient()
 
 
+def _dedupe_preserve_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            deduped.append(item)
+    return deduped
+
+
+@lru_cache(maxsize=1)
+def _cached_task_names(cache_bucket: int) -> tuple[str, ...]:
+    # Cache task names briefly to keep completion responsive while typing.
+    tasks = get_recent_tasks(limit=200)
+    names = _dedupe_preserve_order([t["task_name"] for t in tasks if t["task_name"]])
+    return tuple(names)
+
+
 def complete_tasks(incomplete: str):
-    tasks = get_recent_tasks()
-    for task in tasks:
-        if incomplete.lower() in task["task_name"].lower():
-            yield task["task_name"]
+    # Bucket by 10s to avoid hitting sqlite on every completion invocation.
+    names = _cached_task_names(int(time.time() // 10))
+    needle = incomplete.casefold()
+    for name in names:
+        if needle in name.casefold():
+            yield name
 
 
 # ---------------------------------------------------------------------------
@@ -147,69 +170,139 @@ def _interactive_start() -> None:
     """Prompt the user to pick a task, project, duration, and tags, then start."""
     import questionary
 
-    init_db()
-    cfg = load_config()
-    days = cfg.get("history_retention_days")
-
-    # --- task selection ---
-    timezone_config = cfg.get("timezone", "auto")
-    recent = get_recent_tasks(limit=10, days=days, timezone_config=timezone_config)
-    task_names = [t["task_name"] for t in recent]
-
-    if task_names:
-        choices = ["New task"] + task_names
-        answer = questionary.autocomplete("Select a task:", choices=choices).ask()
-        if answer is None:
-            raise typer.Abort()
-        if answer == "New task":
-            task = questionary.text("Task name:").ask()
-        else:
-            task = answer
-    else:
-        task = questionary.text("Task name:").ask()
-
-    if not task:
-        raise typer.Abort()
-
-    # --- project selection ---
-    recent_projects = get_recent_projects(limit=10, days=days, timezone_config=timezone_config)
-    if recent_projects:
-        proj_choices = ["No project", "New project"] + recent_projects
-        proj_answer = questionary.autocomplete("Select a project:", choices=proj_choices).ask()
-        if proj_answer is None:
-            raise typer.Abort()
-        if proj_answer == "New project":
-            project = questionary.text("Project name:").ask() or None
-        elif proj_answer == "No project":
-            project = None
-        else:
-            project = proj_answer
-    else:
-        project = questionary.text("Project name (leave blank for none):").ask() or None
-
-    # --- duration ---
-    default_dur = str(cfg.get("session_duration", 25))
-    dur_str = questionary.text("Duration (minutes):", default=default_dur).ask()
     try:
-        duration = int(dur_str)
-    except (TypeError, ValueError):
-        duration = int(default_dur)
+        init_db()
+        cfg = load_config()
+        days = cfg.get("history_retention_days")
 
-    # --- tags ---
-    recent_tags = get_recent_tag_names(limit=30)
-    if recent_tags:
-        tag_str = questionary.autocomplete(
-            "Tags (comma-separated, or blank):", 
-            choices=recent_tags,
-        ).ask()
-    else:
-        tag_str = questionary.text("Tags (comma-separated, or blank):").ask()
-        
-    tags: list[str] | None = None
-    if tag_str:
-        tags = [t.strip() for t in tag_str.split(",") if t.strip()]
+        # --- task selection ---
+        timezone_config = cfg.get("timezone", "auto")
+        recent = get_recent_tasks(limit=30, days=days, timezone_config=timezone_config)
+        task_names = _dedupe_preserve_order([t["task_name"] for t in recent if t["task_name"]])
 
-    _start_session(task, project, duration, estimate=None, tags=tags)
+        if task_names:
+            choices = ["New task"] + task_names
+            answer = questionary.autocomplete("Select a task:", choices=choices).ask()
+            if answer is None:
+                raise typer.Abort()
+            if answer == "New task":
+                task = questionary.text("Task name:").ask()
+                if task is None:
+                    raise typer.Abort()
+                task = task.strip()
+                while task and task_name_exists(task):
+                    reuse = questionary.confirm(
+                        f"Task '{task}' already exists. Reuse existing task?",
+                        default=True,
+                    ).ask()
+                    if reuse is None:
+                        raise typer.Abort()
+                    if reuse:
+                        break
+                    task = questionary.text("Task name (new):").ask()
+                    if task is None:
+                        raise typer.Abort()
+                    task = task.strip()
+            else:
+                task = answer
+        else:
+            task = questionary.text("Task name:").ask()
+            if task is None:
+                raise typer.Abort()
+            task = task.strip()
+            while task and task_name_exists(task):
+                reuse = questionary.confirm(
+                    f"Task '{task}' already exists. Reuse existing task?",
+                    default=True,
+                ).ask()
+                if reuse is None:
+                    raise typer.Abort()
+                if reuse:
+                    break
+                task = questionary.text("Task name (new):").ask()
+                if task is None:
+                    raise typer.Abort()
+                task = task.strip()
+
+        if not task:
+            raise typer.Abort()
+
+        # --- project selection ---
+        recent_projects = _dedupe_preserve_order(
+            get_recent_projects(limit=30, days=days, timezone_config=timezone_config)
+        )
+        if recent_projects:
+            proj_choices = ["No project", "New project"] + recent_projects
+            proj_answer = questionary.autocomplete("Select a project:", choices=proj_choices).ask()
+            if proj_answer is None:
+                raise typer.Abort()
+            if proj_answer == "New project":
+                project = questionary.text("Project name:").ask()
+                if project is None:
+                    raise typer.Abort()
+                project = project.strip() or None
+                while project and project_name_exists(project):
+                    reuse = questionary.confirm(
+                        f"Project '{project}' already exists. Reuse existing project?",
+                        default=True,
+                    ).ask()
+                    if reuse is None:
+                        raise typer.Abort()
+                    if reuse:
+                        break
+                    project = questionary.text("Project name (new):").ask()
+                    if project is None:
+                        raise typer.Abort()
+                    project = project.strip() or None
+            elif proj_answer == "No project":
+                project = None
+            else:
+                project = proj_answer
+        else:
+            project = questionary.text("Project name (leave blank for none):").ask()
+            if project is None:
+                raise typer.Abort()
+            project = project.strip() or None
+            while project and project_name_exists(project):
+                reuse = questionary.confirm(
+                    f"Project '{project}' already exists. Reuse existing project?",
+                    default=True,
+                ).ask()
+                if reuse is None:
+                    raise typer.Abort()
+                if reuse:
+                    break
+                project = questionary.text("Project name (new):").ask()
+                if project is None:
+                    raise typer.Abort()
+                project = project.strip() or None
+
+        # --- duration ---
+        default_dur = str(cfg.get("session_duration", 25))
+        dur_str = questionary.text("Duration (minutes):", default=default_dur).ask()
+        try:
+            duration = int(dur_str)
+        except (TypeError, ValueError):
+            duration = int(default_dur)
+
+        # --- tags ---
+        recent_tags = _dedupe_preserve_order(get_recent_tag_names(limit=30))
+        if recent_tags:
+            tag_str = questionary.autocomplete(
+                "Tags (comma-separated, or blank):",
+                choices=recent_tags,
+            ).ask()
+        else:
+            tag_str = questionary.text("Tags (comma-separated, or blank):").ask()
+
+        tags: list[str] | None = None
+        if tag_str:
+            tags = [t.strip() for t in tag_str.split(",") if t.strip()]
+
+        _start_session(task, project, duration, estimate=None, tags=tags)
+    except KeyboardInterrupt:
+        console.print("[bold yellow]Cancelled.[/bold yellow]")
+        raise typer.Exit()
 
 
 def _start_session(
@@ -281,13 +374,17 @@ def interactive_mode() -> None:
         "Initialize database": "init",
     }
 
-    answer = questionary.autocomplete(
-        "What would you like to do?",
-        choices=list(commands.keys()),
-    ).ask()
-
+    try:
+        answer = questionary.autocomplete(
+            "What would you like to do?",
+            choices=list(commands.keys()),
+        ).ask()
+    except KeyboardInterrupt:
+        console.print("[bold yellow]Cancelled.[/bold yellow]")
+        raise typer.Exit()
     if answer is None:
-        raise typer.Abort()
+        console.print("[bold yellow]Cancelled.[/bold yellow]")
+        raise typer.Exit()
 
     cmd = commands[answer]
 
@@ -723,54 +820,58 @@ def config_cmd():
         ("backup_max_versions", "Maximum backup versions to keep"),
     ]
 
-    for key, label in numeric_keys:
-        val = questionary.text(
-            f"{label}:", default=str(cfg.get(key, DEFAULT_CONFIG[key]))
+    try:
+        for key, label in numeric_keys:
+            val = questionary.text(
+                f"{label}:", default=str(cfg.get(key, DEFAULT_CONFIG[key]))
+            ).ask()
+            if val is None:
+                raise typer.Abort()
+            try:
+                cfg[key] = int(val)
+            except ValueError:
+                cfg[key] = DEFAULT_CONFIG[key]
+
+        sound = questionary.confirm(
+            "Enable sound notifications?", default=cfg.get("sound_enabled", True)
         ).ask()
-        if val is None:
+        if sound is None:
             raise typer.Abort()
-        try:
-            cfg[key] = int(val)
-        except ValueError:
-            cfg[key] = DEFAULT_CONFIG[key]
+        cfg["sound_enabled"] = sound
 
-    sound = questionary.confirm(
-        "Enable sound notifications?", default=cfg.get("sound_enabled", True)
-    ).ask()
-    if sound is None:
-        raise typer.Abort()
-    cfg["sound_enabled"] = sound
+        hotkey = questionary.text(
+            "Distraction hotkey (e.g. cmd+shift+d):",
+            default=cfg.get("hotkey_distraction", DEFAULT_CONFIG["hotkey_distraction"]),
+        ).ask()
+        if hotkey is None:
+            raise typer.Abort()
+        cfg["hotkey_distraction"] = hotkey
 
-    hotkey = questionary.text(
-        "Distraction hotkey (e.g. cmd+shift+d):",
-        default=cfg.get("hotkey_distraction", DEFAULT_CONFIG["hotkey_distraction"]),
-    ).ask()
-    if hotkey is None:
-        raise typer.Abort()
-    cfg["hotkey_distraction"] = hotkey
+        tz = questionary.text(
+            "Timezone (e.g. auto, Europe/Berlin):",
+            default=cfg.get("timezone", DEFAULT_CONFIG["timezone"]),
+        ).ask()
+        if tz is None:
+            raise typer.Abort()
+        cfg["timezone"] = tz
 
-    tz = questionary.text(
-        "Timezone (e.g. auto, Europe/Berlin):",
-        default=cfg.get("timezone", DEFAULT_CONFIG["timezone"]),
-    ).ask()
-    if tz is None:
-        raise typer.Abort()
-    cfg["timezone"] = tz
+        bdir = questionary.text(
+            "Backup directory (leave blank for default):",
+            default=cfg.get("backup_dir", DEFAULT_CONFIG["backup_dir"]),
+        ).ask()
+        if bdir is None:
+            raise typer.Abort()
+        cfg["backup_dir"] = bdir
 
-    bdir = questionary.text(
-        "Backup directory (leave blank for default):",
-        default=cfg.get("backup_dir", DEFAULT_CONFIG["backup_dir"]),
-    ).ask()
-    if bdir is None:
-        raise typer.Abort()
-    cfg["backup_dir"] = bdir
-
-    bcomp = questionary.confirm(
-        "Compress backups (gzip)?", default=cfg.get("backup_compress", True)
-    ).ask()
-    if bcomp is None:
-        raise typer.Abort()
-    cfg["backup_compress"] = bcomp
+        bcomp = questionary.confirm(
+            "Compress backups (gzip)?", default=cfg.get("backup_compress", True)
+        ).ask()
+        if bcomp is None:
+            raise typer.Abort()
+        cfg["backup_compress"] = bcomp
+    except KeyboardInterrupt:
+        console.print("[bold yellow]Cancelled.[/bold yellow]")
+        raise typer.Exit()
 
     # Summary table
     table = Table(title="Configuration Summary")

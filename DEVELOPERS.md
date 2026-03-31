@@ -21,14 +21,14 @@
 - **UTC persistence** with **configurable display timezone** for reports and interactive history retention; centralized helpers in `time_util.py`.
 - **Seed script** for realistic demo data; warns when seeding the default DB path without `POMOCLI_DB_PATH`.
 - **Database backups** (`pomocli.db.backup`): optional gzip compression, rotation, manual `pomo backup`, and automatic background runs via the daemon.
+- Improved interactive UX: cleaner `Ctrl-C` cancellation, de-duplicated fuzzy choices, duplicate-name reuse prompts, and snappier completion caches.
+- Session lifecycle event logging for `start`, `pause`, `resume`, `extend`, `stop`, `kill`, `idle`, and `complete`.
+- Dark-mode status bar icon support via `pomocli-status-icon-dark.png` (with fallback to default icon).
 
 ### Next Steps / High Priority
 
 - **CLI / UX Improvements:**
   - Customize pomo shortcut keys for start, pause, resume, distract.
-  - Allow `Ctrl-C` to cleanly cancel out of interactive menus (like `start`).
-  - Fix duplicate items appearing in fuzzy search lists.
-  - When adding a new task/project, if the name is a duplicate, ask the user (default to existing, or prompt for a new name).
 - **Session Lifecycle & State:**
   - Improve state transitions and logging when a session is stopped, killed, or the machine goes idle.
 - **Distractions:**

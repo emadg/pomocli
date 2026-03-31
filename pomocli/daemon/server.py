@@ -9,7 +9,7 @@ import sys
 import time
 import logging
 from .timer import PomodoroTimer, TimerState
-from ..db.operations import update_session, log_distraction
+from ..db.operations import update_session, log_distraction, log_session_event
 from ..db.connection import DB_PATH
 from ..db.backup import maybe_run_automatic_backup
 from ..config import load_config
@@ -67,6 +67,9 @@ class DaemonServer:
 
     def _on_idle(self):
         if self.timer.state == TimerState.RUNNING:
+            if self.timer.session_id:
+                log_session_event(self.timer.session_id, "idle")
+                log_session_event(self.timer.session_id, "pause", {"source": "idle"})
             self.timer.pause()
 
     def _extend_on_distract(self):
@@ -87,6 +90,7 @@ class DaemonServer:
 
     def _on_complete(self):
         if self.timer.session_id:
+            log_session_event(self.timer.session_id, "complete")
             update_session(
                 self.timer.session_id, "completed", self.timer.focus_duration, end_time=True
             )
@@ -108,13 +112,20 @@ class DaemonServer:
                 duration = args.get("duration", 25)
                 session_id = args.get("session_id")
                 self.timer.start(duration, session_id)
+                if session_id:
+                    log_session_event(session_id, "start", {"duration_minutes": duration})
                 play_sound("start")
             elif command == "pause":
+                if self.timer.session_id and self.timer.state == TimerState.RUNNING:
+                    log_session_event(self.timer.session_id, "pause", {"source": "manual"})
                 self.timer.pause()
             elif command == "resume":
+                if self.timer.session_id and self.timer.state == TimerState.PAUSED:
+                    log_session_event(self.timer.session_id, "resume")
                 self.timer.resume()
             elif command == "stop":
                 if self.timer.session_id:
+                    log_session_event(self.timer.session_id, "stop")
                     logged = min(self.timer.duration - self.timer.time_left, self.timer.focus_duration)
                     update_session(
                         self.timer.session_id, "stopped", logged, end_time=True
@@ -122,6 +133,7 @@ class DaemonServer:
                 self.timer.stop()
             elif command == "kill":
                 if self.timer.session_id:
+                    log_session_event(self.timer.session_id, "kill")
                     logged = min(self.timer.duration - self.timer.time_left, self.timer.focus_duration)
                     update_session(
                         self.timer.session_id, "killed", logged, end_time=True
@@ -143,6 +155,9 @@ class DaemonServer:
                     cfg = load_config()
                     extend = cfg.get("distraction_extend_minutes", 0)
                     if extend and extend > 0:
+                        log_session_event(
+                            self.timer.session_id, "extend", {"minutes": extend}
+                        )
                         self.timer.add_time(extend, counts_as_focus=True)
                         response["extended_by"] = extend
                     else:

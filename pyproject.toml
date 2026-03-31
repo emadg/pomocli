@@ -29,6 +29,7 @@ packages = ["pomocli"]
 "pomocli/db/schema.sql" = "pomocli/db/schema.sql"
 "assets/pomocli-mac-app.png" = "assets/pomocli-mac-app.png"
 "assets/pomocli-status-icon.png" = "assets/pomocli-status-icon.png"
+"assets/pomocli-status-icon-dark.png" = "assets/pomocli-status-icon-dark.png"
 "pomocli/_build_info.py" = "pomocli/_build_info.py"
 
 [project.scripts]
@@ -36,6 +37,7 @@ pomo = "pomocli.cli.main:app"
 
 [dependency-groups]
 dev = [
+    "mypy>=1.19.1",
     "pillow>=11.0.0",
     "poethepoet>=0.32.0",
     "pytest>=9.0.2",

@@ -1,6 +1,8 @@
 import pytest
+import types
 from typer.testing import CliRunner
 from pomocli.cli.main import app
+from pomocli.cli import main
 
 runner = CliRunner()
 
@@ -97,3 +99,30 @@ def test_cli_report_quarter(mocker):
     mocker.patch('pomocli.cli.main.generate_report')
     result = runner.invoke(app, ["report", "quarter"])
     assert result.exit_code == 0
+
+
+def test_complete_tasks_dedupes_and_filters(mocker):
+    mocker.patch("pomocli.cli.main.get_recent_tasks", return_value=[
+        {"task_name": "Write docs"},
+        {"task_name": "write tests"},
+        {"task_name": "Write docs"},
+    ])
+    main._cached_task_names.cache_clear()
+    values = list(main.complete_tasks("write"))
+    assert values == ["Write docs", "write tests"]
+
+
+def test_interactive_mode_ctrl_c_exits_cleanly(mocker, monkeypatch):
+    class _BrokenPrompt:
+        def ask(self):
+            raise KeyboardInterrupt
+
+    fake_questionary = types.SimpleNamespace(
+        autocomplete=lambda *args, **kwargs: _BrokenPrompt()
+    )
+    monkeypatch.setitem(__import__("sys").modules, "questionary", fake_questionary)
+    mocker.patch("pomocli.cli.main._is_interactive", return_value=True)
+
+    result = runner.invoke(app, [])
+    assert result.exit_code == 0
+    assert "Cancelled." in result.stdout

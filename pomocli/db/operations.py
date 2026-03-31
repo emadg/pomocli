@@ -1,6 +1,6 @@
+import json
 import sqlite3
 from typing import Optional, List, Dict, Any
-from datetime import datetime
 from .connection import get_connection
 from ..time_util import utc_now_sql, retention_cutoff_utc, get_display_tz
 
@@ -177,3 +177,70 @@ def get_recent_tag_names(limit: int = 30) -> List[str]:
     rows = cursor.fetchall()
     conn.close()
     return [row["tag_name"] for row in rows]
+
+
+def task_name_exists(task_name: str) -> bool:
+    """Return True if any task exists with this name (case-insensitive)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT 1 FROM tasks WHERE task_name = ? COLLATE NOCASE LIMIT 1",
+        (task_name,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return row is not None
+
+
+def project_name_exists(project_name: str) -> bool:
+    """Return True if any project exists with this name (case-insensitive)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT 1
+        FROM tasks
+        WHERE project_name IS NOT NULL
+          AND project_name = ? COLLATE NOCASE
+        LIMIT 1
+        """,
+        (project_name,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return row is not None
+
+
+def log_session_event(
+    session_id: int,
+    event_type: str,
+    details: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Append a lifecycle event for a running or completed session."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    payload = json.dumps(details) if details else None
+    cursor.execute(
+        "INSERT INTO session_events (session_id, event_type, timestamp, details) VALUES (?, ?, ?, ?)",
+        (session_id, event_type, utc_now_sql(), payload),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_session_events(session_id: int) -> List[sqlite3.Row]:
+    """Fetch ordered lifecycle events for a given session."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT *
+        FROM session_events
+        WHERE session_id = ?
+        ORDER BY timestamp ASC, id ASC
+        """,
+        (session_id,),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return rows

@@ -6,6 +6,7 @@ INSTALL_DIR = $(HOME)/Applications
 REPO_ROOT = ../..
 MAC_APP_PNG = $(REPO_ROOT)/assets/pomocli-mac-app.png
 STATUS_PNG = $(REPO_ROOT)/assets/pomocli-status-icon.png
+STATUS_DARK_PNG = $(REPO_ROOT)/assets/pomocli-status-icon-dark.png
 VERSION = $(shell grep '^version' $(REPO_ROOT)/pyproject.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
 BUILD_STAMP = $(VERSION).dev$(shell date -u +%Y.%m.%d.%H%M)
 VERSION_FILE = Sources/PomoCLITimer/BuildInfo.swift
@@ -45,6 +46,11 @@ bundle: build
 		cp "$(STATUS_PNG)" "$(APP_BUNDLE)/Contents/Resources/"; \
 	else \
 		echo "warning: $(STATUS_PNG) missing; status bar will fall back to emoji"; \
+	fi
+	@if [ -f "$(STATUS_DARK_PNG)" ]; then \
+		cp "$(STATUS_DARK_PNG)" "$(APP_BUNDLE)/Contents/Resources/"; \
+	else \
+		echo "warning: $(STATUS_DARK_PNG) missing; dark mode will use default status icon"; \
 	fi
 
 install: bundle

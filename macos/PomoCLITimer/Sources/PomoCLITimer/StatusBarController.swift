@@ -9,16 +9,21 @@ final class StatusBarController {
 
     private static let statusIconHeight: CGFloat = 18
 
-    /// PNG from the app bundle (`pomocli-status-icon.png`); falls back to emoji if missing (e.g. `swift run` without bundling).
+    /// PNG from the app bundle; use a dark variant when macOS is in dark mode.
     private static func statusBarImage() -> NSImage {
-        let name = "pomocli-status-icon"
-        if let url = Bundle.main.url(forResource: name, withExtension: "png"),
-           let image = NSImage(contentsOf: url) {
-            let h = statusIconHeight
-            let aspect = image.size.width / max(image.size.height, 1)
-            image.size = NSSize(width: h * aspect, height: h)
-            image.isTemplate = false
-            return image
+        let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let candidates = isDark
+            ? ["pomocli-status-icon-dark", "pomocli-status-icon"]
+            : ["pomocli-status-icon"]
+        for name in candidates {
+            if let url = Bundle.main.url(forResource: name, withExtension: "png"),
+               let image = NSImage(contentsOf: url) {
+                let h = statusIconHeight
+                let aspect = image.size.width / max(image.size.height, 1)
+                image.size = NSSize(width: h * aspect, height: h)
+                image.isTemplate = false
+                return image
+            }
         }
         return emojiImage("🍅")
     }

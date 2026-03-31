@@ -32,3 +32,12 @@ CREATE TABLE IF NOT EXISTS tags (
     tag_name TEXT NOT NULL,
     FOREIGN KEY(session_id) REFERENCES sessions(id)
 );
+
+CREATE TABLE IF NOT EXISTS session_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    timestamp DATETIME NOT NULL,
+    details TEXT,
+    FOREIGN KEY(session_id) REFERENCES sessions(id)
+);
