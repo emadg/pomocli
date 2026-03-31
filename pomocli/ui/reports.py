@@ -1,10 +1,17 @@
 from rich.console import Console
 from rich.table import Table
-from typing import List
+from typing import List, DefaultDict
 from collections import defaultdict
 import sqlite3
 from ..db.connection import get_connection
-from ..time_util import report_time_bounds, get_display_tz, parse_stored_utc
+from ..db.operations import get_sessions_in_range
+from ..time_util import (
+    report_time_bounds,
+    get_display_tz,
+    parse_stored_utc,
+    format_local,
+    format_duration_hm,
+)
 
 console = Console()
 
@@ -16,6 +23,7 @@ def generate_report(period: str = "today", *, timezone_config: str = "auto"):
     tz = get_display_tz(timezone_config)
     start_utc, end_utc = report_time_bounds(period, tz)
     
+    params: tuple[str, str] | tuple[()]
     if start_utc and end_utc:
         date_filter = "s.start_time >= ? AND s.start_time < ?"
         params = (start_utc, end_utc)
@@ -49,9 +57,10 @@ def generate_report(period: str = "today", *, timezone_config: str = "auto"):
     """
     cursor.execute(trend_query, params)
     raw_trend_rows = cursor.fetchall()
+    session_rows = get_sessions_in_range(start_utc, end_utc)
     
     # Group by local calendar date in Python
-    daily_totals = defaultdict(int)
+    daily_totals: DefaultDict[str, int] = defaultdict(int)
     for r in raw_trend_rows:
         if not r['start_time']:
             continue
@@ -82,26 +91,61 @@ def generate_report(period: str = "today", *, timezone_config: str = "auto"):
         duration = row['total_duration'] or 0
         total_time += duration
         
-        mins, secs = divmod(duration, 60)
-        hours, mins = divmod(mins, 60)
-        time_str = f"{hours}h {mins}m" if hours > 0 else f"{mins}m"
-        
-        table.add_row(project, task, sessions, completed, time_str)
+        table.add_row(project, task, sessions, completed, format_duration_hm(duration))
         
     console.print(table)
     
-    total_mins = total_time // 60
-    t_hours, t_mins = divmod(total_mins, 60)
-    console.print(f"\n[bold]Total Time Logged:[/bold] {t_hours}h {t_mins}m")
+    console.print(f"\n[bold]Total Time Logged:[/bold] {format_duration_hm(total_time)}")
+
+    if session_rows:
+        detail_table = Table(title=f"Session Details ({period.capitalize()})")
+        detail_table.add_column("ID", justify="right", style="cyan")
+        detail_table.add_column("Start", style="cyan")
+        detail_table.add_column("Project", style="magenta")
+        detail_table.add_column("Task", style="magenta")
+        detail_table.add_column("Status", style="green")
+        detail_table.add_column("Logged", justify="right", style="yellow")
+        detail_table.add_column("Distract", justify="right", style="yellow")
+        detail_table.add_column("Notes", style="white")
+
+        completed_sessions = 0
+        total_logged_sessions = 0
+        for row in session_rows:
+            logged = int(row["duration_logged"] or 0)
+            total_logged_sessions += logged
+            if row["status"] == "completed":
+                completed_sessions += 1
+            detail_table.add_row(
+                str(row["id"]),
+                format_local(row["start_time"], timezone_config),
+                row["project_name"] or "-",
+                row["task_name"] or "-",
+                row["status"],
+                format_duration_hm(logged),
+                str(row["distraction_count"] or 0),
+                row["distraction_notes"] or "-",
+            )
+
+        console.print()
+        console.print(detail_table)
+        focus_rate = (completed_sessions / len(session_rows)) * 100
+        console.print(
+            f"[bold]Focus rate:[/bold] {focus_rate:.0f}% ({completed_sessions}/{len(session_rows)} completed) | "
+            f"[bold]Total logged:[/bold] {format_duration_hm(total_logged_sessions)}"
+        )
 
     if trend_rows and period != "today":
-        console.print("\n[bold]Daily Trend:[/bold]")
+        console.print("\n[bold]Daily Trend:[/bold]\n")
         max_duration = max((r['daily_duration'] or 0) for r in trend_rows)
+
         if max_duration > 0:
             for r in trend_rows:
                 day = r['day']
                 dur = r['daily_duration'] or 0
-                mins = dur // 60
+                hm_dur = format_duration_hm(dur)
                 bar_len = int((dur / max_duration) * 40)
                 bar = "█" * bar_len
-                console.print(f"  {day} | {mins:3d}m | [blue]{bar}[/blue]")
+                
+                # normalize the bars to the same length for date and hm_dur
+                console.print(f" {day:<10} | {hm_dur:>8} | [blue]{bar}[/blue]")
+            console.print()

@@ -8,6 +8,7 @@ from pomocli.time_util import (
     format_local,
     retention_cutoff_utc,
     report_time_bounds,
+    format_duration_hm,
 )
 
 def test_utc_now_sql():
@@ -99,3 +100,10 @@ def test_report_time_bounds(mocker):
     start_a, end_a = report_time_bounds("all", tz)
     assert start_a is None
     assert end_a is None
+
+
+def test_format_duration_hm():
+    assert format_duration_hm(0) == "0m"
+    assert format_duration_hm(60) == "1m"
+    assert format_duration_hm(1500) == "25m"
+    assert format_duration_hm(3900) == "1h 5m"

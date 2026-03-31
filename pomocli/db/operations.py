@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, cast
 from .connection import get_connection
 from ..time_util import utc_now_sql, retention_cutoff_utc, get_display_tz
 
@@ -46,7 +46,7 @@ def create_session(task_id: Optional[int], git_repo: Optional[str] = None, git_b
     conn.close()
     if session_id is None:
         raise RuntimeError("Failed to create session row")
-    return session_id
+    return cast(int, session_id)
 
 def update_session(session_id: int, status: str, duration_logged: int, end_time: bool = False):
     """Update an existing session."""
@@ -248,10 +248,18 @@ def get_session_events(session_id: int) -> List[sqlite3.Row]:
     return rows
 
 
-def get_sessions_in_range(start_utc: str, end_utc: str) -> List[sqlite3.Row]:
-    """Get sessions in a UTC interval with task and distraction summaries."""
+def get_sessions_in_range(
+    start_utc: Optional[str] = None,
+    end_utc: Optional[str] = None,
+) -> List[sqlite3.Row]:
+    """Get sessions with task and distraction summaries, optionally filtered by UTC interval."""
     conn = get_connection()
     cursor = conn.cursor()
+    where_clause = "1=1"
+    params: tuple[Any, ...] = ()
+    if start_utc and end_utc:
+        where_clause = "s.start_time >= ? AND s.start_time < ?"
+        params = (start_utc, end_utc)
     cursor.execute(
         """
         SELECT
@@ -272,11 +280,11 @@ def get_sessions_in_range(start_utc: str, end_utc: str) -> List[sqlite3.Row]:
         FROM sessions s
         LEFT JOIN tasks t ON s.task_id = t.id
         LEFT JOIN distractions d ON d.session_id = s.id
-        WHERE s.start_time >= ? AND s.start_time < ?
+        WHERE {where_clause}
         GROUP BY s.id
         ORDER BY s.start_time DESC
-        """,
-        (start_utc, end_utc),
+        """.format(where_clause=where_clause),
+        params,
     )
     rows = cursor.fetchall()
     conn.close()

@@ -25,7 +25,7 @@ from ..db.connection import init_db, DB_PATH
 from ..db.backup import run_db_backup, resolve_backup_dir
 from ..config import load_config, save_config, DEFAULT_CONFIG
 from ..utils.git import get_git_context
-from ..time_util import report_time_bounds, get_display_tz, format_local
+from ..time_util import report_time_bounds, get_display_tz, format_local, format_duration_hm
 from .. import __build__
 
 from typer.core import TyperGroup
@@ -814,7 +814,6 @@ def list_cmd():
         total_logged += logged
         if row["status"] == "completed":
             completed += 1
-        mins = logged // 60
         start_local = format_local(row["start_time"], timezone_config)
         notes = row["distraction_notes"] or "-"
         project = row["project_name"] or "-"
@@ -824,17 +823,16 @@ def list_cmd():
             project,
             row["task_name"] or "-",
             row["status"],
-            f"{mins}m",
+            format_duration_hm(logged),
             str(row["distraction_count"] or 0),
             notes,
         )
 
     console.print(table)
     focus_rate = (completed / len(rows)) * 100
-    total_minutes = total_logged // 60
     console.print(
         f"[bold]Focus rate:[/bold] {focus_rate:.0f}% ({completed}/{len(rows)} completed) | "
-        f"[bold]Total logged:[/bold] {total_minutes}m"
+        f"[bold]Total logged:[/bold] {format_duration_hm(total_logged)}"
     )
 
 

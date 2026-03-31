@@ -1,18 +1,30 @@
 import zoneinfo
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, tzinfo
+from typing import cast
 from typing import Optional, Tuple
 
 SQLITE_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
+def format_duration_hm(total_seconds: int) -> str:
+    """Format seconds as human-friendly hours/minutes."""
+    total_minutes = max(0, int(total_seconds)) // 60
+    hours, minutes = divmod(total_minutes, 60)
+    if hours > 0:
+        return f"{hours}h {minutes}m"
+    else:
+        return f"{minutes}m"
 
 def utc_now_sql() -> str:
     """Return the current UTC time formatted for SQLite."""
     return datetime.now(timezone.utc).strftime(SQLITE_DATETIME_FORMAT)
 
-def get_display_tz(timezone_config: str) -> timezone | zoneinfo.ZoneInfo:
+def get_display_tz(timezone_config: str) -> tzinfo:
     """Resolve a timezone config string to a tzinfo object."""
     if not timezone_config or timezone_config.lower() == "auto":
         # Returns the system local timezone
-        return datetime.now().astimezone().tzinfo or timezone.utc
+        local_tz = datetime.now().astimezone().tzinfo
+        return cast(tzinfo, local_tz or timezone.utc)
     try:
         return zoneinfo.ZoneInfo(timezone_config)
     except zoneinfo.ZoneInfoNotFoundError:

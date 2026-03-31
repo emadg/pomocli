@@ -67,7 +67,7 @@ Running `pomo start` without a task name opens interactive start: pick from rece
 | `pomo extend` | `ee` | Extend the current session (configured minutes) |
 | `pomo status` | `stt` | Show timer status |
 | `pomo list` | | List today's sessions with status, focus rate, and notes |
-| `pomo report [PERIOD]` | | Summary report: `today`, `week`, `month`, `quarter`, or `all` |
+| `pomo report [PERIOD]` | | Summary + session detail report: `today`, `week`, `month`, `quarter`, or `all` |
 | `pomo backup` | | Create a manual database backup |
 | `pomo dash` | | Live TUI dashboard (`--detail minimal`, `normal`, or `full`) |
 | `pomo logo` | | Print the CLI logo |
