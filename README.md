@@ -66,7 +66,8 @@ Running `pomo start` without a task name opens interactive start: pick from rece
 | `pomo distract [DESC]` | `dd` | Log a distraction |
 | `pomo extend` | `ee` | Extend the current session (configured minutes) |
 | `pomo status` | `stt` | Show timer status |
-| `pomo list` | | List today's sessions with status, focus rate, and notes |
+| `pomo session list` | `ssn list` | List today's sessions with status, focus rate, and notes |
+| `pomo session <subcommand>` | `ssn <subcommand>` | Manage past sessions (`list`, `edit`, `cancel`, `delete`) |
 | `pomo report [PERIOD]` | | Summary + session detail report: `today`, `week`, `month`, `quarter`, or `all` |
 | `pomo backup` | | Create a manual database backup |
 | `pomo dash` | | Live TUI dashboard (`--detail minimal`, `normal`, or `full`) |

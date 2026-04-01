@@ -23,14 +23,14 @@ CREATE TABLE IF NOT EXISTS distractions (
     session_id INTEGER NOT NULL,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     description TEXT,
-    FOREIGN KEY(session_id) REFERENCES sessions(id)
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id INTEGER NOT NULL,
     tag_name TEXT NOT NULL,
-    FOREIGN KEY(session_id) REFERENCES sessions(id)
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS session_events (
@@ -39,5 +39,5 @@ CREATE TABLE IF NOT EXISTS session_events (
     event_type TEXT NOT NULL,
     timestamp DATETIME NOT NULL,
     details TEXT,
-    FOREIGN KEY(session_id) REFERENCES sessions(id)
+    FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );

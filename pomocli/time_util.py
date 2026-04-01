@@ -48,7 +48,7 @@ def format_local(dt_utc_naive_or_aware: datetime | str, timezone_config: str) ->
     tz = get_display_tz(timezone_config)
     return dt.astimezone(tz).strftime(SQLITE_DATETIME_FORMAT)
 
-def retention_cutoff_utc(days: int, tz: timezone | zoneinfo.ZoneInfo) -> str:
+def retention_cutoff_utc(days: int, tz: tzinfo) -> str:
     """
     Return the UTC instant of local midnight at start of (local_today - days).
     Used as a lower bound for "task touched in the last N local calendar days".
@@ -58,7 +58,7 @@ def retention_cutoff_utc(days: int, tz: timezone | zoneinfo.ZoneInfo) -> str:
     cutoff_local = local_today_midnight - timedelta(days=days)
     return cutoff_local.astimezone(timezone.utc).strftime(SQLITE_DATETIME_FORMAT)
 
-def report_time_bounds(period: str, tz: timezone | zoneinfo.ZoneInfo) -> Tuple[Optional[str], Optional[str]]:
+def report_time_bounds(period: str, tz: tzinfo) -> Tuple[Optional[str], Optional[str]]:
     """
     Return (start_utc_sql_inclusive, end_utc_sql_exclusive) bounds for a report period.
     Periods: 'today', 'week' (last 7 days), 'month' (start of month), 'quarter' (last 90 days), 'all'

@@ -13,6 +13,10 @@ from pomocli.db.operations import (
     get_sessions_in_range,
     log_distraction,
     update_session,
+    format_session_public_id,
+    resolve_session_identifier,
+    delete_session_cascade,
+    get_session_by_id,
 )
 from pomocli.db.connection import init_db, get_connection
 
@@ -87,3 +91,49 @@ def test_get_sessions_in_range_includes_distraction_summary(mocker, tmp_path):
     assert row["status"] == "completed"
     assert row["distraction_count"] == 2
     assert "Slack ping" in (row["distraction_notes"] or "")
+    assert row["public_id"] == format_session_public_id(session_id, row["start_time"])
+
+
+def test_resolve_session_identifier_short_and_pk(mocker, tmp_path):
+    db_path = tmp_path / "test.db"
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    init_db()
+
+    task_id = get_or_create_task("Resolver task")
+    session_id = create_session(task_id)
+    row = get_session_by_id(session_id)
+    assert row is not None
+    public_id = format_session_public_id(session_id, row["start_time"])
+
+    assert resolve_session_identifier(public_id) == session_id
+    assert resolve_session_identifier(str(session_id)) == session_id
+    assert resolve_session_identifier("not-an-id") is None
+
+
+def test_delete_session_cascade_removes_related_rows(mocker, tmp_path):
+    db_path = tmp_path / "test.db"
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    init_db()
+
+    task_id = get_or_create_task("Delete task")
+    session_id = create_session(task_id)
+    add_tags(session_id, ["cleanup"])
+    log_distraction(session_id, "Message")
+    log_session_event(session_id, "start")
+
+    assert delete_session_cascade(session_id)
+    assert get_session_by_id(session_id) is None
+
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) AS c FROM tags WHERE session_id = ?", (session_id,))
+    tags_count = cur.fetchone()["c"]
+    cur.execute("SELECT COUNT(*) AS c FROM distractions WHERE session_id = ?", (session_id,))
+    distractions_count = cur.fetchone()["c"]
+    cur.execute("SELECT COUNT(*) AS c FROM session_events WHERE session_id = ?", (session_id,))
+    events_count = cur.fetchone()["c"]
+    conn.close()
+
+    assert tags_count == 0
+    assert distractions_count == 0
+    assert events_count == 0

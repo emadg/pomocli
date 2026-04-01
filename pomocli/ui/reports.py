@@ -1,8 +1,7 @@
 from rich.console import Console
 from rich.table import Table
-from typing import List, DefaultDict
+from typing import DefaultDict
 from collections import defaultdict
-import sqlite3
 from ..db.connection import get_connection
 from ..db.operations import get_sessions_in_range
 from ..time_util import (
@@ -99,7 +98,7 @@ def generate_report(period: str = "today", *, timezone_config: str = "auto"):
 
     if session_rows:
         detail_table = Table(title=f"Session Details ({period.capitalize()})")
-        detail_table.add_column("ID", justify="right", style="cyan")
+        detail_table.add_column("Session", justify="right", style="cyan")
         detail_table.add_column("Start", style="cyan")
         detail_table.add_column("Project", style="magenta")
         detail_table.add_column("Task", style="magenta")
@@ -115,8 +114,11 @@ def generate_report(period: str = "today", *, timezone_config: str = "auto"):
             total_logged_sessions += logged
             if row["status"] == "completed":
                 completed_sessions += 1
+            session_display = (
+                row["public_id"] if "public_id" in row.keys() and row["public_id"] else str(row["id"])
+            )
             detail_table.add_row(
-                str(row["id"]),
+                session_display,
                 format_local(row["start_time"], timezone_config),
                 row["project_name"] or "-",
                 row["task_name"] or "-",

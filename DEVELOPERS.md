@@ -13,7 +13,7 @@
 - Shell and Typer help (`-h`), command shorthands (`ss`, `pp`, `rr`, …), optional shell completion.
 - Interactive command picker and interactive start (questionary autocomplete for tasks, projects, tags).
 - Live dashboard (`pomo dash`) with `--detail minimal|normal|full`.
-- Reporting with period summaries and ASCII daily trend charts (`today` / `week` / `month` / `quarter` / `all`).
+- Reporting with period summaries, session detail rows, and ASCII daily trend charts (`today` / `week` / `month` / `quarter` / `all`).
 - Distraction logging from CLI and from the macOS app (debounced, Swift-only global hotkey).
 - Git repo and branch captured on sessions when available.
 - Daemon logging with structured timestamps (UTC in log formatter).
@@ -24,13 +24,24 @@
 - Improved interactive UX: cleaner `Ctrl-C` cancellation, de-duplicated fuzzy choices, duplicate-name reuse prompts, and snappier completion caches.
 - Session lifecycle event logging for `start`, `pause`, `resume`, `extend`, `stop`, `kill`, `idle`, and `complete`.
 - Dark-mode status bar icon support via `pomocli-status-icon-dark.png` (with fallback to default icon).
+- Session management foundation:
+  - `pomo session list` (alias `ssn list`) for today's sessions with status, focus rate, and distraction notes.
+  - `pomo session edit|cancel|delete` for past sessions.
+  - Deterministic short session IDs (`YY + padded session PK`, UTC-year based) shown in list/report and accepted by session commands.
+  - Safe delete path for related session rows (`tags`, `distractions`, `session_events`), with foreign keys enabled in DB connections.
+  - Added shorthand discoverability/examples for `session` commands (`ssn`).
+- Human-readable duration formatting (`Xh Ym`) across list/report summaries.
 
 ### Next Steps / High Priority
 
+- **Session Management Polish (Phase 4 continuation):**
+  - Add stronger safety checks around mutating/deleting sessions that are currently active.
+  - Improve session edit UX (interactive mode, validation hints, and confirmation summaries).
+  - Decide whether short session IDs should remain derived or be stored as a persisted unique column.
+- **Insights on top of event stream:**
+  - Use `session_events` in user-facing analytics (not only persistence), including event-type summaries and drill-down.
 - **CLI / UX Improvements:**
   - Customize pomo shortcut keys for start, pause, resume, distract.
-- **Session Lifecycle & State:**
-  - Improve state transitions and logging when a session is stopped, killed, or the machine goes idle.
 - **Distractions:**
   - Fix the glitchy distract recorder (prevent double beeps, ensure the timer doesn't show the old time before the extension is applied).
   - Add an optional popup from the macOS status bar to capture notes when a distraction occurs (with a toggle in the status bar UI to enable/disable).
@@ -40,9 +51,6 @@
 ### Future Features / Backlog
 
 - **Session Management & History:**
-  - Add a `pomo list` command to see today's sessions, their status, focus rate, and notes.
-  - Assign short IDs to sessions so they can be easily referenced in CLI commands.
-  - Add commands to edit, cancel, or delete previous sessions.
   - Add the ability to score past sessions and attach notes to them.
 - **Task & Project Management:**
   - Provide functionality to review and merge duplicate tasks or project names.
@@ -50,7 +58,6 @@
 - **Insights & Planning:**
   - Create a timeline view for days or weeks to reflect on how time was spent and adjust approaches.
   - Advanced scheduling: plan days/weeks for focus work, track actual time against those schedules, and analyze trends.
-  - Record all the events for a running session: pause, resume, stop, kill, extend, etc. for later insights
+  - Leverage recorded session events (pause/resume/stop/kill/extend/idle) for timeline accuracy and deeper insights.
 - **Aesthetics and UX**
-  - add a black tomato PNG logo for status bar for macos's Dark mode
   - adding menu control to open a new terminal shortcut key?

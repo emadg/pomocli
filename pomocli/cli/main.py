@@ -20,6 +20,12 @@ from ..db.operations import (
     task_name_exists,
     project_name_exists,
     get_sessions_in_range,
+    resolve_session_identifier,
+    get_session_by_id,
+    format_session_public_id,
+    edit_session,
+    cancel_session,
+    delete_session_cascade,
 )
 from ..db.connection import init_db, DB_PATH
 from ..db.backup import run_db_backup, resolve_backup_dir
@@ -42,7 +48,8 @@ COMMAND_SHORTHANDS = {
     "stop": "sp",
     "distract": "dd",
     "status": "stt",
-    "extend": "ee"
+    "extend": "ee",
+    "session": "ssn",
 }
 
 class CustomHelpGroup(TyperGroup):
@@ -129,6 +136,9 @@ app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]},
     cls=CustomHelpGroup,
 )
+session_app = typer.Typer(help="Manage past sessions.")
+app.add_typer(session_app, name="session")
+app.add_typer(session_app, name="ssn", hidden=True)
 console = Console()
 client = DaemonClient()
 
@@ -751,6 +761,105 @@ def _status_cmd_impl():
         console.print("Pomodoro status: [bold]Not running (Daemon down)[/bold]")
 
 
+SESSION_STATUS_VALUES = {"running", "paused", "completed", "stopped", "killed"}
+
+
+def _resolve_session_pk_or_exit(identifier: str) -> int:
+    resolved = resolve_session_identifier(identifier)
+    if resolved is None:
+        console.print(f"[bold red]Session '{identifier}' was not found.[/bold red]")
+        raise typer.Exit(1)
+    return resolved
+
+
+@session_app.command("edit")
+def session_edit_cmd(
+    identifier: str = typer.Argument(..., help="Session short ID or numeric PK"),
+    status: Optional[str] = typer.Option(None, "--status", help="New status value"),
+    duration: Optional[int] = typer.Option(
+        None, "--duration", "-d", help="Duration logged in minutes"
+    ),
+):
+    """Edit a past session."""
+    if status is None and duration is None:
+        console.print(
+            "[bold red]Provide at least one field: --status and/or --duration.[/bold red]"
+        )
+        raise typer.Exit(1)
+    if status is not None and status not in SESSION_STATUS_VALUES:
+        allowed = ", ".join(sorted(SESSION_STATUS_VALUES))
+        console.print(f"[bold red]Invalid status '{status}'. Use one of: {allowed}[/bold red]")
+        raise typer.Exit(1)
+    if duration is not None and duration < 0:
+        console.print("[bold red]Duration must be >= 0 minutes.[/bold red]")
+        raise typer.Exit(1)
+
+    session_pk = _resolve_session_pk_or_exit(identifier)
+    changed = edit_session(
+        session_pk,
+        status=status,
+        duration_logged_seconds=(duration * 60) if duration is not None else None,
+    )
+    if not changed:
+        console.print("[bold red]No session was updated.[/bold red]")
+        raise typer.Exit(1)
+
+    session_row = get_session_by_id(session_pk)
+    display_id = (
+        format_session_public_id(session_pk, session_row["start_time"])
+        if session_row
+        else identifier
+    )
+    console.print(f"[bold green]Updated session {display_id}.[/bold green]")
+
+
+@session_app.command("cancel")
+def session_cancel_cmd(
+    identifier: str = typer.Argument(..., help="Session short ID or numeric PK"),
+):
+    """Cancel (kill) a past session."""
+    session_pk = _resolve_session_pk_or_exit(identifier)
+    changed = cancel_session(session_pk)
+    if not changed:
+        console.print("[bold red]No session was cancelled.[/bold red]")
+        raise typer.Exit(1)
+
+    session_row = get_session_by_id(session_pk)
+    display_id = (
+        format_session_public_id(session_pk, session_row["start_time"])
+        if session_row
+        else identifier
+    )
+    console.print(f"[bold yellow]Cancelled session {display_id}.[/bold yellow]")
+
+
+@session_app.command("delete")
+def session_delete_cmd(
+    identifier: str = typer.Argument(..., help="Session short ID or numeric PK"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+):
+    """Delete a past session and related records."""
+    session_pk = _resolve_session_pk_or_exit(identifier)
+    session_row = get_session_by_id(session_pk)
+    display_id = (
+        format_session_public_id(session_pk, session_row["start_time"])
+        if session_row
+        else identifier
+    )
+
+    if not yes and _is_interactive():
+        confirmed = typer.confirm(f"Delete session {display_id}?", default=False)
+        if not confirmed:
+            console.print("[bold yellow]Deletion cancelled.[/bold yellow]")
+            raise typer.Exit()
+
+    deleted = delete_session_cascade(session_pk)
+    if not deleted:
+        console.print("[bold red]No session was deleted.[/bold red]")
+        raise typer.Exit(1)
+    console.print(f"[bold green]Deleted session {display_id}.[/bold green]")
+
+
 from ..ui.reports import generate_report
 from ..ui.dashboard import run_dashboard
 from ..ui.logo import print_logo
@@ -781,7 +890,7 @@ def report(
     generate_report(period, timezone_config=cfg.get("timezone", "auto"))
 
 
-@app.command(name="list")
+@session_app.command(name="list")
 def list_cmd():
     """List today's sessions with status, focus rate, and notes."""
     cfg = load_config()
@@ -798,7 +907,7 @@ def list_cmd():
         return
 
     table = Table(title="Today's Sessions")
-    table.add_column("ID", justify="right", style="cyan")
+    table.add_column("Session", justify="right", style="cyan")
     table.add_column("Start", style="cyan")
     table.add_column("Project", style="magenta")
     table.add_column("Task", style="magenta")
@@ -817,8 +926,11 @@ def list_cmd():
         start_local = format_local(row["start_time"], timezone_config)
         notes = row["distraction_notes"] or "-"
         project = row["project_name"] or "-"
+        session_display = (
+            row["public_id"] if "public_id" in row.keys() and row["public_id"] else str(row["id"])
+        )
         table.add_row(
-            str(row["id"]),
+            session_display,
             start_local,
             project,
             row["task_name"] or "-",

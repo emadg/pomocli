@@ -4,6 +4,12 @@ from typing import Optional, List, Dict, Any, cast
 from .connection import get_connection
 from ..time_util import utc_now_sql, retention_cutoff_utc, get_display_tz
 
+
+def format_session_public_id(session_id: int, start_time_utc: str) -> str:
+    """Build short session ID as YY + zero-padded session PK."""
+    yy = start_time_utc[2:4] if start_time_utc and len(start_time_utc) >= 4 else "00"
+    return f"{yy}{session_id:04d}"
+
 def get_or_create_task(task_name: str, project_name: Optional[str] = None, estimated_minutes: Optional[int] = None) -> int:
     """Get an existing task ID or create a new one."""
     conn = get_connection()
@@ -248,6 +254,109 @@ def get_session_events(session_id: int) -> List[sqlite3.Row]:
     return rows
 
 
+def get_session_by_id(session_id: int) -> Optional[sqlite3.Row]:
+    """Fetch a single session row by its primary key."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM sessions WHERE id = ?", (session_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row
+
+
+def resolve_session_identifier(identifier: str) -> Optional[int]:
+    """
+    Resolve either a short public ID (YY+session_pk) or a raw numeric PK.
+    Returns the session PK if resolvable.
+    """
+    token = identifier.strip()
+    if not token.isdigit():
+        return None
+
+    # Prefer short-ID resolution for identifiers shaped like YYxxxx.
+    if len(token) >= 6:
+        candidate_pk = int(token[2:])
+        candidate = get_session_by_id(candidate_pk)
+        if candidate:
+            expected = format_session_public_id(candidate_pk, candidate["start_time"])
+            if expected == token:
+                return candidate_pk
+
+    # Fallback to direct primary key lookup.
+    candidate_pk = int(token)
+    candidate = get_session_by_id(candidate_pk)
+    if candidate:
+        return candidate_pk
+    return None
+
+
+def edit_session(
+    session_id: int,
+    *,
+    status: Optional[str] = None,
+    duration_logged_seconds: Optional[int] = None,
+) -> bool:
+    """Edit mutable fields for an existing past session."""
+    assignments: list[str] = []
+    params: list[Any] = []
+
+    if status is not None:
+        assignments.append("status = ?")
+        params.append(status)
+    if duration_logged_seconds is not None:
+        if duration_logged_seconds < 0:
+            raise ValueError("duration_logged_seconds must be non-negative")
+        assignments.append("duration_logged = ?")
+        params.append(duration_logged_seconds)
+    if not assignments:
+        return False
+
+    params.append(session_id)
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"UPDATE sessions SET {', '.join(assignments)} WHERE id = ?",
+        tuple(params),
+    )
+    changed = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return changed
+
+
+def cancel_session(session_id: int) -> bool:
+    """Mark a past session as killed (cancelled)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        UPDATE sessions
+        SET status = 'killed',
+            end_time = COALESCE(end_time, ?)
+        WHERE id = ?
+        """,
+        (utc_now_sql(), session_id),
+    )
+    changed = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return changed
+
+
+def delete_session_cascade(session_id: int) -> bool:
+    """Delete a session and all dependent records."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM tags WHERE session_id = ?", (session_id,))
+    cursor.execute("DELETE FROM distractions WHERE session_id = ?", (session_id,))
+    cursor.execute("DELETE FROM session_events WHERE session_id = ?", (session_id,))
+    cursor.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+    deleted = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
+
+
 def get_sessions_in_range(
     start_utc: Optional[str] = None,
     end_utc: Optional[str] = None,
@@ -264,6 +373,7 @@ def get_sessions_in_range(
         """
         SELECT
             s.id,
+            SUBSTR(s.start_time, 3, 2) || printf('%04d', s.id) AS public_id,
             s.start_time,
             s.end_time,
             s.duration_logged,
