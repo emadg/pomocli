@@ -9,23 +9,34 @@ final class StatusBarController {
 
     private static let statusIconHeight: CGFloat = 18
 
-    /// PNG from the app bundle; use a dark variant when macOS is in dark mode.
+    /// PNG from the app bundle, drawn as a **template** so AppKit picks menu bar
+    /// foreground color (light/dark menu bar, wallpaper tint, etc.).
     private static func statusBarImage() -> NSImage {
-        let isDark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        let candidates = isDark
-            ? ["pomocli-status-icon-dark", "pomocli-status-icon"]
-            : ["pomocli-status-icon"]
+        // Prefer the single-stroke asset; `pomocli-status-icon-dark` is a fallback
+        // if the primary PNG is missing from the bundle.
+        let candidates = ["pomocli-status-icon", "pomocli-status-icon-dark"]
         for name in candidates {
             if let url = Bundle.main.url(forResource: name, withExtension: "png"),
                let image = NSImage(contentsOf: url) {
                 let h = statusIconHeight
                 let aspect = image.size.width / max(image.size.height, 1)
                 image.size = NSSize(width: h * aspect, height: h)
-                image.isTemplate = false
+                image.isTemplate = true
                 return image
             }
         }
         return emojiImage("🍅")
+    }
+
+    /// SF Symbol rendered for the status bar; template so it tracks menu bar styling.
+    private static func templateSymbol(_ systemName: String, pointSize: CGFloat = 13) -> NSImage? {
+        guard let base = NSImage(systemSymbolName: systemName, accessibilityDescription: nil) else {
+            return nil
+        }
+        let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .medium)
+        guard let image = base.withSymbolConfiguration(config) else { return nil }
+        image.isTemplate = true
+        return image
     }
 
     private static func emojiImage(_ emoji: String, size: CGFloat = 18) -> NSImage {
@@ -87,7 +98,7 @@ final class StatusBarController {
                 statusItem.button?.title = String(format: " %02d:%02d", mins, secs)
             }
         case "paused":
-            statusItem.button?.image = Self.emojiImage("⏸")
+            statusItem.button?.image = Self.templateSymbol("pause.fill") ?? Self.emojiImage("⏸")
             if isElapsed {
                 statusItem.button?.title = String(format: " ⏱ %02d:%02d", mins, secs)
             } else {
@@ -141,7 +152,7 @@ final class StatusBarController {
     func flashDistraction() {
         let savedImage = statusItem.button?.image
         let savedTitle = statusItem.button?.title ?? ""
-        statusItem.button?.image = Self.emojiImage("⚡")
+        statusItem.button?.image = Self.templateSymbol("bolt.fill") ?? Self.emojiImage("⚡")
         statusItem.button?.title = " distraction"
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             self?.statusItem.button?.image = savedImage
