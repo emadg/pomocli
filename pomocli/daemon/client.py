@@ -50,8 +50,19 @@ class DaemonClient:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    def start(self, duration: int, session_id: int):
-        return self._send_command("start", {"duration": duration, "session_id": session_id})
+    def start(
+        self,
+        duration: int,
+        session_id: int,
+        *,
+        timer_mode: str = "countdown",
+    ):
+        args: Dict[str, Any] = {
+            "duration": duration,
+            "session_id": session_id,
+            "timer_mode": timer_mode,
+        }
+        return self._send_command("start", args)
 
     def pause(self):
         return self._send_command("pause")

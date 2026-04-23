@@ -130,7 +130,7 @@ class CustomHelpGroup(TyperGroup):
 
 app = typer.Typer(
     name="pomo",
-    help="A lightweight, feature-rich CLI Pomodoro application.",
+    help="A lightweight, feature-rich CLI Pomodoro timer (countdown and stopwatch / elapsed sessions).",
     add_completion=True,
     no_args_is_help=False,
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -239,6 +239,18 @@ def _interactive_start() -> None:
         if not task:
             raise typer.Abort()
 
+        # --- session type (countdown vs stopwatch) ---
+        session_kind = questionary.select(
+            "Session type:",
+            choices=[
+                "Pomodoro (countdown)",
+                "Stopwatch (elapsed time)",
+            ],
+        ).ask()
+        if session_kind is None:
+            raise typer.Abort()
+        elapsed = session_kind == "Stopwatch (elapsed time)"
+
         # --- project selection ---
         recent_projects = _dedupe_preserve_order(
             get_recent_projects(limit=30, days=days, timezone_config=timezone_config)
@@ -289,13 +301,16 @@ def _interactive_start() -> None:
                     raise typer.Abort()
                 project = project.strip() or None
 
-        # --- duration ---
-        default_dur = str(cfg.get("session_duration", 25))
-        dur_str = questionary.text("Duration (minutes):", default=default_dur).ask()
-        try:
-            duration = int(dur_str)
-        except (TypeError, ValueError):
-            duration = int(default_dur)
+        # --- duration (countdown only) ---
+        if elapsed:
+            duration = 0
+        else:
+            default_dur = str(cfg.get("session_duration", 25))
+            dur_str = questionary.text("Duration (minutes):", default=default_dur).ask()
+            try:
+                duration = int(dur_str)
+            except (TypeError, ValueError):
+                duration = int(default_dur)
 
         # --- tags ---
         recent_tags = _dedupe_preserve_order(get_recent_tag_names(limit=30))
@@ -311,7 +326,7 @@ def _interactive_start() -> None:
         if tag_str:
             tags = [t.strip() for t in tag_str.split(",") if t.strip()]
 
-        _start_session(task, project, duration, estimate=None, tags=tags)
+        _start_session(task, project, duration, estimate=None, tags=tags, elapsed=elapsed)
     except KeyboardInterrupt:
         console.print("[bold yellow]Cancelled.[/bold yellow]")
         raise typer.Exit()
@@ -323,6 +338,10 @@ def _start_session(
     duration: int,
     estimate: int | None,
     tags: list[str] | None,
+    *,
+    elapsed: bool = False,
+    git_repo: str | None = None,
+    git_branch: str | None = None,
 ) -> None:
     """Core logic shared by CLI-args path and interactive path."""
     ensure_daemon()
@@ -339,18 +358,39 @@ def _start_session(
 
     task_id = get_or_create_task(task, project, estimate)
     repo_name, branch_name = get_git_context()
-    session_id = create_session(task_id, repo_name, branch_name)
+    if git_repo is not None:
+        repo_name = git_repo
+    if git_branch is not None:
+        branch_name = git_branch
+    timer_mode = "elapsed" if elapsed else "countdown"
+    session_id = create_session(
+        task_id, repo_name, branch_name, timer_mode=timer_mode
+    )
 
     if tags:
         add_tags(session_id, tags)
 
-    response = client.start(duration, session_id)
+    response = client.start(
+        duration,
+        session_id,
+        timer_mode=timer_mode,
+    )
     if response.get("status") == "ok":
-        parts = [f"[bold green]Started session for '{task}' ({duration}m)[/bold green]"]
+        if elapsed:
+            parts = [
+                f"[bold green]Started stopwatch session for '{task}'[/bold green]"
+            ]
+        else:
+            parts = [
+                f"[bold green]Started session for '{task}' ({duration}m)[/bold green]"
+            ]
         if project:
             parts.append(f"  Project: {project}")
         if repo_name:
-            parts.append(f"  Git: {repo_name}/{branch_name}")
+            if branch_name:
+                parts.append(f"  Git: {repo_name}/{branch_name}")
+            else:
+                parts.append(f"  Git: {repo_name}")
         if tags:
             parts.append(f"  Tags: {', '.join(tags)}")
         console.print("\n".join(parts))
@@ -405,16 +445,7 @@ def interactive_mode() -> None:
         _interactive_start()
     elif cmd == "distract":
         desc = questionary.text("Distraction description (optional):").ask()
-        response = client.distract(desc)
-        if response.get("status") == "ok":
-            msg = f"Distraction logged: {desc}" if desc else "Distraction logged."
-            cfg = load_config()
-            extend = cfg.get("distraction_extend_minutes", 0)
-            if extend and extend > 0:
-                msg += f" Timer extended by {extend}m."
-            console.print(f"[bold yellow]{msg}[/bold yellow]")
-        else:
-            console.print(f"[bold red]Error: {response.get('message')}[/bold red]")
+        _distract_cmd_impl(desc)
     elif cmd == "report":
         period = questionary.select(
             "Report period:", choices=["today", "week", "month", "quarter", "all"]
@@ -555,15 +586,26 @@ def start(
     project: Optional[str] = typer.Option(
         None, "--project", "-p", help="Project name"
     ),
-    duration: int = typer.Option(25, "--duration", "-d", help="Duration in minutes"),
+    duration: int = typer.Option(25, "--duration", "-d", help="Duration in minutes (countdown only; ignored with --elapsed)"),
     estimate: Optional[int] = typer.Option(
         None, "--estimate", "-e", help="Estimated minutes"
     ),
     last: bool = typer.Option(False, "--last", "-l", help="Resume last task"),
     tag: Optional[List[str]] = typer.Option(None, "--tag", "-t", help="Tags for this session"),
+    elapsed: bool = typer.Option(
+        False,
+        "--elapsed",
+        help="Stopwatch mode: counts up, no session extension on distraction",
+    ),
+    git_repo: Optional[str] = typer.Option(
+        None, "--repo", help="Override git repo name stored on the session",
+    ),
+    git_branch: Optional[str] = typer.Option(
+        None, "--branch", help="Override git branch stored on the session",
+    ),
 ):
     """Start a new pomodoro session."""
-    _start_cmd_impl(task, project, duration, estimate, last, tag)
+    _start_cmd_impl(task, project, duration, estimate, last, tag, elapsed, git_repo, git_branch)
 
 @app.command(name="ss", hidden=True)
 def start_shorthand(
@@ -573,17 +615,28 @@ def start_shorthand(
     project: Optional[str] = typer.Option(
         None, "--project", "-p", help="Project name"
     ),
-    duration: int = typer.Option(25, "--duration", "-d", help="Duration in minutes"),
+    duration: int = typer.Option(25, "--duration", "-d", help="Duration in minutes (countdown only; ignored with --elapsed)"),
     estimate: Optional[int] = typer.Option(
         None, "--estimate", "-e", help="Estimated minutes"
     ),
     last: bool = typer.Option(False, "--last", "-l", help="Resume last task"),
     tag: Optional[List[str]] = typer.Option(None, "--tag", "-t", help="Tags for this session"),
+    elapsed: bool = typer.Option(
+        False,
+        "--elapsed",
+        help="Stopwatch mode: counts up, no session extension on distraction",
+    ),
+    git_repo: Optional[str] = typer.Option(
+        None, "--repo", help="Override git repo name stored on the session",
+    ),
+    git_branch: Optional[str] = typer.Option(
+        None, "--branch", help="Override git branch stored on the session",
+    ),
 ):
     """Shorthand for start."""
-    _start_cmd_impl(task, project, duration, estimate, last, tag)
+    _start_cmd_impl(task, project, duration, estimate, last, tag, elapsed, git_repo, git_branch)
 
-def _start_cmd_impl(task, project, duration, estimate, last, tag):
+def _start_cmd_impl(task, project, duration, estimate, last, tag, elapsed, git_repo, git_branch):
     init_db()
 
     # Handle --last flag
@@ -604,7 +657,16 @@ def _start_cmd_impl(task, project, duration, estimate, last, tag):
             console.print("[bold red]Please provide a task name or use --last.[/bold red]")
             raise typer.Exit(1)
 
-    _start_session(task, project, duration, estimate, tag)
+    _start_session(
+        task,
+        project,
+        duration,
+        estimate,
+        tag,
+        elapsed=elapsed,
+        git_repo=git_repo,
+        git_branch=git_branch,
+    )
 
 
 @app.command()
@@ -705,9 +767,11 @@ def _distract_cmd_impl(description):
         msg = "Distraction logged."
         if description:
             msg = f"Distraction logged: {description}"
+        st = client.status()
+        mode = (st.get("data") or {}).get("timer_mode", "countdown")
         cfg = load_config()
         extend = cfg.get("distraction_extend_minutes", 0)
-        if extend and extend > 0:
+        if mode != "elapsed" and extend and extend > 0:
             msg += f" Timer extended by {extend}m."
         console.print(f"[bold yellow]{msg}[/bold yellow]")
     else:
@@ -751,12 +815,22 @@ def _status_cmd_impl():
         if state == "stopped":
             console.print("Pomodoro status: [bold]Not running[/bold]")
         else:
-            time_left = data.get("time_left", 0)
-            mins, secs = divmod(time_left, 60)
+            mode = data.get("timer_mode", "countdown")
             color = "green" if state == "running" else "yellow"
-            console.print(
-                f"Pomodoro status: [bold {color}]{state.capitalize()}[/bold {color}] - {mins:02d}:{secs:02d} left"
-            )
+            if mode == "elapsed":
+                elapsed = int(data.get("elapsed_seconds", 0))
+                mins, secs = divmod(elapsed, 60)
+                console.print(
+                    f"Pomodoro status: [bold {color}]{state.capitalize()}[/bold {color}] - "
+                    f"{mins:02d}:{secs:02d} elapsed (stopwatch)"
+                )
+            else:
+                time_left = data.get("time_left", 0)
+                mins, secs = divmod(time_left, 60)
+                console.print(
+                    f"Pomodoro status: [bold {color}]{state.capitalize()}[/bold {color}] - "
+                    f"{mins:02d}:{secs:02d} left"
+                )
     else:
         console.print("Pomodoro status: [bold]Not running (Daemon down)[/bold]")
 

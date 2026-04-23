@@ -46,13 +46,20 @@ class DashboardApp(App):
         if response.get("status") == "ok":
             data = response.get("data", {})
             state = data.get("state", "stopped")
-            time_left = data.get("time_left", 0)
-            
-            mins, secs = divmod(time_left, 60)
-            timer_str = f"{mins:02d}:{secs:02d}"
-            
+            mode = data.get("timer_mode", "countdown")
+            if mode == "elapsed":
+                elapsed = int(data.get("elapsed_seconds", 0))
+                mins, secs = divmod(elapsed, 60)
+                timer_str = f"{mins:02d}:{secs:02d}"
+                label = f"{state.capitalize()} (elapsed)"
+            else:
+                time_left = data.get("time_left", 0)
+                mins, secs = divmod(time_left, 60)
+                timer_str = f"{mins:02d}:{secs:02d}"
+                label = state.capitalize()
+
             self.query_one("#timer-display", Static).update(timer_str)
-            self.query_one("#status-display", Static).update(state.capitalize())
+            self.query_one("#status-display", Static).update(label)
 
             detail_str = ""
             if state != "stopped" and self.detail in ("normal", "full"):

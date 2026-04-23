@@ -1,5 +1,11 @@
 # Developers Guide
 
+## Timer modes (daemon / DB)
+
+- **Countdown (default):** `timer.py` decrements `time_left`; natural end calls `on_complete` and marks the session completed. Logged seconds use `min(duration - time_left, focus_duration)` (also exposed as `logged_focus_seconds()`).
+- **Elapsed:** `start_elapsed(session_id)` increments `elapsed_seconds` only while `RUNNING`. Stop/kill persist `elapsed_seconds`. The Unix-socket `start` command passes `timer_mode: "elapsed"`; status JSON always includes `timer_mode` and `elapsed_seconds` for UIs.
+- **Schema:** `sessions.timer_mode` defaults to `countdown`. New installs get the column from `schema.sql`; existing DBs get it via `_apply_schema_migrations()` in `db/connection.py` (run as part of `pomo init` / any code path that calls `init_db()`).
+
 ## Time and Timezones
 
 - **Storage**: The SQLite database stores all timestamps as **UTC** strings (`YYYY-MM-DD HH:MM:SS`). Do not use SQLite's `date('now')` or `CURRENT_TIMESTAMP` for queries that depend on the user's local day/week boundaries.
@@ -31,6 +37,7 @@
   - Safe delete path for related session rows (`tags`, `distractions`, `session_events`), with foreign keys enabled in DB connections.
   - Added shorthand discoverability/examples for `session` commands (`ssn`).
 - Human-readable duration formatting (`Xh Ym`) across list/report summaries.
+- **Elapsed (stopwatch) sessions:** `pomo start --elapsed` and interactive “Stopwatch (elapsed time)”. Daemon `PomodoroTimer` supports `TimerMode.elapsed` (`start_elapsed`): counts up while running, no `on_complete` from the timer; `get_status()` exposes `timer_mode` and `elapsed_seconds`. Distractions do not extend the clock; `pomo extend` returns an error. Sessions persist `timer_mode` on the `sessions` table (`countdown` | `elapsed`); `init_db()` runs an idempotent `ALTER` for existing databases. CLI overrides: `--repo`, `--branch`. macOS menu bar shows elapsed with a stopwatch prefix; `pomo status` and `pomo dash` branch on `timer_mode`.
 
 ### Next Steps / High Priority
 
@@ -40,6 +47,7 @@
   - Decide whether short session IDs should remain derived or be stored as a persisted unique column.
 - **Insights on top of event stream:**
   - Use `session_events` in user-facing analytics (not only persistence), including event-type summaries and drill-down.
+  - Treat `sessions.timer_mode = 'elapsed'` explicitly where metrics assume a planned duration (e.g. focus rate vs target block length).
 - **CLI / UX Improvements:**
   - Customize pomo shortcut keys for start, pause, resume, distract.
 - **Distractions:**
@@ -61,3 +69,6 @@
   - Leverage recorded session events (pause/resume/stop/kill/extend/idle) for timeline accuracy and deeper insights.
 - **Aesthetics and UX**
   - adding menu control to open a new terminal shortcut key?
+  - make the timer space be fixed so as the time changes without number of digits changing like for example going from 18:58 -> 11:11 the space remains fixed without small adjustments, kinda mono-space for the timer characters
+  - make the macos app icon a bit smaller seems bigger compared to other apps in my mac, smaller square overall
+  - 

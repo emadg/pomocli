@@ -37,14 +37,20 @@ def get_or_create_task(task_name: str, project_name: Optional[str] = None, estim
     conn.close()
     return int(task_id)
 
-def create_session(task_id: Optional[int], git_repo: Optional[str] = None, git_branch: Optional[str] = None) -> int:
+def create_session(
+    task_id: Optional[int],
+    git_repo: Optional[str] = None,
+    git_branch: Optional[str] = None,
+    *,
+    timer_mode: str = "countdown",
+) -> int:
     """Create a new session and return its ID."""
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     cursor.execute(
-        "INSERT INTO sessions (task_id, start_time, git_repo, git_branch) VALUES (?, ?, ?, ?)",
-        (task_id, utc_now_sql(), git_repo, git_branch)
+        "INSERT INTO sessions (task_id, start_time, git_repo, git_branch, timer_mode) VALUES (?, ?, ?, ?, ?)",
+        (task_id, utc_now_sql(), git_repo, git_branch, timer_mode),
     )
     session_id = cursor.lastrowid
     

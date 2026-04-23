@@ -59,7 +59,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.statusBar.updateDisconnected()
                 return
             }
-            self.statusBar.update(state: data.state, timeLeft: data.time_left)
+            self.statusBar.update(
+                state: data.state,
+                timeLeft: data.time_left,
+                timerMode: data.timer_mode,
+                elapsedSeconds: data.elapsed_seconds
+            )
         }
     }
 }

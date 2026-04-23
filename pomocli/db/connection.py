@@ -1,5 +1,5 @@
-import sqlite3
 import os
+import sqlite3
 from pathlib import Path
 
 DB_DIR = Path.home() / ".config" / "pomocli"
@@ -15,14 +15,25 @@ def get_connection() -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
+def _apply_schema_migrations(conn: sqlite3.Connection) -> None:
+    """Idempotent ALTERs for existing databases (CREATE IF NOT EXISTS does not add columns)."""
+    cur = conn.execute("PRAGMA table_info(sessions)")
+    columns = {row[1] for row in cur.fetchall()}
+    if "timer_mode" not in columns:
+        conn.execute(
+            "ALTER TABLE sessions ADD COLUMN timer_mode TEXT DEFAULT 'countdown'"
+        )
+
+
 def init_db():
     """Initialize the database schema."""
     conn = get_connection()
     with open(SCHEMA_PATH, "r") as f:
         schema = f.read()
-    
+
     with conn:
         conn.executescript(schema)
+        _apply_schema_migrations(conn)
     conn.close()
 
 if __name__ == "__main__":

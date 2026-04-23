@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     status TEXT DEFAULT 'running', -- running, paused, completed, killed
     git_repo TEXT,
     git_branch TEXT,
+    timer_mode TEXT DEFAULT 'countdown', -- countdown | elapsed
     FOREIGN KEY(task_id) REFERENCES tasks(id)
 );
 

@@ -3,7 +3,7 @@ import socket
 import threading
 
 from pomocli.daemon.server import DaemonServer
-from pomocli.daemon.timer import TimerState
+from pomocli.daemon.timer import TimerMode, TimerState
 
 
 def _send(server: DaemonServer, command: str, args: dict | None = None) -> dict:
@@ -85,3 +85,60 @@ def test_extend_and_idle_emit_events(mocker):
     pause.assert_called_once()
     assert log_event.call_args_list[1].args[:2] == (12, "idle")
     assert log_event.call_args_list[2].args[:2] == (12, "pause")
+
+
+def test_extend_elapsed_mode_returns_error(mocker):
+    server = DaemonServer()
+    server.timer.session_id = 3
+    server.timer.state = TimerState.RUNNING
+    server.timer.mode = TimerMode.ELAPSED
+    add_time = mocker.patch.object(server.timer, "add_time")
+    response = _send(server, "extend")
+    assert response["status"] == "error"
+    assert "elapsed" in response["message"].lower()
+    add_time.assert_not_called()
+
+
+def test_distract_elapsed_does_not_extend_timer(mocker):
+    server = DaemonServer()
+    mocker.patch("pomocli.daemon.server.load_config", return_value={"distraction_extend_minutes": 5})
+    mocker.patch("pomocli.daemon.server.play_sound")
+    log_distraction = mocker.patch("pomocli.daemon.server.log_distraction")
+    add_time = mocker.patch.object(server.timer, "add_time")
+
+    server.timer.session_id = 7
+    server.timer.state = TimerState.RUNNING
+    server.timer.mode = TimerMode.ELAPSED
+
+    response = _send(server, "distract", {"description": "slack"})
+    assert response["status"] == "ok"
+    log_distraction.assert_called_once_with(7, "slack")
+    add_time.assert_not_called()
+
+
+def test_start_elapsed_invokes_start_elapsed(mocker):
+    server = DaemonServer()
+    mocker.patch("pomocli.daemon.server.play_sound")
+    start_elapsed = mocker.patch.object(server.timer, "start_elapsed")
+    log_event = mocker.patch("pomocli.daemon.server.log_session_event")
+    _send(server, "start", {"session_id": 99, "timer_mode": "elapsed"})
+    start_elapsed.assert_called_once_with(99)
+    assert log_event.call_args[0][:2] == (99, "start")
+    assert log_event.call_args[0][2].get("mode") == "elapsed"
+
+
+def test_stop_elapsed_uses_logged_seconds(mocker):
+    server = DaemonServer()
+    mocker.patch("pomocli.daemon.server.play_sound")
+    update = mocker.patch("pomocli.daemon.server.update_session")
+    logged = mocker.patch.object(
+        server.timer, "logged_focus_seconds", return_value=333
+    )
+    mocker.patch.object(server.timer, "stop")
+
+    server.timer.session_id = 5
+    server.timer.state = TimerState.RUNNING
+    server.timer.mode = TimerMode.ELAPSED
+    _send(server, "stop")
+    logged.assert_called_once()
+    update.assert_called_once_with(5, "stopped", 333, end_time=True)

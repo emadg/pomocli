@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "pomocli"
 version = "0.1.0"
-description = "A lightweight, feature-rich Python CLI Pomodoro application"
+description = "A lightweight, feature-rich Python CLI Pomodoro timer with optional elapsed (stopwatch) sessions"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

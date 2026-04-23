@@ -71,18 +71,28 @@ final class StatusBarController {
         updateMenuState()
     }
 
-    func update(state: String, timeLeft: Int) {
+    func update(state: String, timeLeft: Int, timerMode: String? = nil, elapsedSeconds: Int? = nil) {
         currentState = state
-        let mins = timeLeft / 60
-        let secs = timeLeft % 60
+        let isElapsed = (timerMode ?? "countdown") == "elapsed"
+        let displaySeconds = isElapsed ? (elapsedSeconds ?? 0) : timeLeft
+        let mins = displaySeconds / 60
+        let secs = displaySeconds % 60
 
         switch state {
         case "running":
             statusItem.button?.image = Self.statusBarImage()
-            statusItem.button?.title = String(format: " %02d:%02d", mins, secs)
+            if isElapsed {
+                statusItem.button?.title = String(format: " ⏱ %02d:%02d", mins, secs)
+            } else {
+                statusItem.button?.title = String(format: " %02d:%02d", mins, secs)
+            }
         case "paused":
             statusItem.button?.image = Self.emojiImage("⏸")
-            statusItem.button?.title = String(format: " %02d:%02d", mins, secs)
+            if isElapsed {
+                statusItem.button?.title = String(format: " ⏱ %02d:%02d", mins, secs)
+            } else {
+                statusItem.button?.title = String(format: " %02d:%02d", mins, secs)
+            }
         default:
             statusItem.button?.image = Self.statusBarImage()
             statusItem.button?.title = ""

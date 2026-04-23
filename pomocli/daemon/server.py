@@ -8,7 +8,7 @@ import threading
 import sys
 import time
 import logging
-from .timer import PomodoroTimer, TimerState
+from .timer import PomodoroTimer, TimerState, TimerMode
 from ..db.operations import update_session, log_distraction, log_session_event
 from ..db.connection import DB_PATH
 from ..db.backup import maybe_run_automatic_backup
@@ -61,7 +61,7 @@ class DaemonServer:
 
     def _stop_session(self):
         if self.timer.session_id:
-            logged = min(self.timer.duration - self.timer.time_left, self.timer.focus_duration)
+            logged = self.timer.logged_focus_seconds()
             update_session(self.timer.session_id, "stopped", logged, end_time=True)
         self.timer.stop()
 
@@ -74,6 +74,8 @@ class DaemonServer:
 
     def _extend_on_distract(self):
         """Extend timer by configured minutes when a distraction is logged."""
+        if self.timer.mode == TimerMode.ELAPSED:
+            return
         cfg = load_config()
         extend = cfg.get("distraction_extend_minutes", 0)
         if extend and extend > 0:
@@ -92,7 +94,10 @@ class DaemonServer:
         if self.timer.session_id:
             log_session_event(self.timer.session_id, "complete")
             update_session(
-                self.timer.session_id, "completed", self.timer.focus_duration, end_time=True
+                self.timer.session_id,
+                "completed",
+                self.timer.logged_focus_seconds(),
+                end_time=True,
             )
             play_sound("complete")
 
@@ -111,9 +116,17 @@ class DaemonServer:
             if command == "start":
                 duration = args.get("duration", 25)
                 session_id = args.get("session_id")
-                self.timer.start(duration, session_id)
-                if session_id:
-                    log_session_event(session_id, "start", {"duration_minutes": duration})
+                timer_mode = args.get("timer_mode", "countdown")
+                if timer_mode == "elapsed":
+                    self.timer.start_elapsed(session_id)
+                    if session_id:
+                        log_session_event(session_id, "start", {"mode": "elapsed"})
+                else:
+                    self.timer.start(duration, session_id)
+                    if session_id:
+                        log_session_event(
+                            session_id, "start", {"duration_minutes": duration}
+                        )
                 play_sound("start")
             elif command == "pause":
                 if self.timer.session_id and self.timer.state == TimerState.RUNNING:
@@ -126,7 +139,7 @@ class DaemonServer:
             elif command == "stop":
                 if self.timer.session_id:
                     log_session_event(self.timer.session_id, "stop")
-                    logged = min(self.timer.duration - self.timer.time_left, self.timer.focus_duration)
+                    logged = self.timer.logged_focus_seconds()
                     update_session(
                         self.timer.session_id, "stopped", logged, end_time=True
                     )
@@ -134,7 +147,7 @@ class DaemonServer:
             elif command == "kill":
                 if self.timer.session_id:
                     log_session_event(self.timer.session_id, "kill")
-                    logged = min(self.timer.duration - self.timer.time_left, self.timer.focus_duration)
+                    logged = self.timer.logged_focus_seconds()
                     update_session(
                         self.timer.session_id, "killed", logged, end_time=True
                     )
@@ -151,7 +164,12 @@ class DaemonServer:
                         "message": "No active session running",
                     }
             elif command == "extend":
-                if self.timer.session_id and self.timer.state in (TimerState.RUNNING, TimerState.PAUSED):
+                if self.timer.mode == TimerMode.ELAPSED:
+                    response = {
+                        "status": "error",
+                        "message": "Not available in elapsed mode",
+                    }
+                elif self.timer.session_id and self.timer.state in (TimerState.RUNNING, TimerState.PAUSED):
                     cfg = load_config()
                     extend = cfg.get("distraction_extend_minutes", 0)
                     if extend and extend > 0:

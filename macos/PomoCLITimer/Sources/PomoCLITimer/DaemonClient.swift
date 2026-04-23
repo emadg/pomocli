@@ -5,6 +5,9 @@ struct StatusData: Codable {
     let time_left: Int
     let duration: Int
     let session_id: Int?
+    /// `"countdown"` (default) or `"elapsed"` stopwatch sessions.
+    let timer_mode: String?
+    let elapsed_seconds: Int?
 }
 
 struct DaemonResponse {
@@ -134,7 +137,9 @@ final class DaemonClient {
                 state: dataDict["state"] as? String ?? "stopped",
                 time_left: dataDict["time_left"] as? Int ?? 0,
                 duration: dataDict["duration"] as? Int ?? 0,
-                session_id: dataDict["session_id"] as? Int
+                session_id: dataDict["session_id"] as? Int,
+                timer_mode: dataDict["timer_mode"] as? String,
+                elapsed_seconds: dataDict["elapsed_seconds"] as? Int
             )
         }
 

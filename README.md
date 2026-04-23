@@ -1,6 +1,6 @@
 # pomocli
 
-A lightweight, feature-rich CLI Pomodoro timer with git awareness, distraction tracking, and a live TUI dashboard.
+A lightweight, feature-rich CLI Pomodoro timer with git awareness, distraction tracking, optional **stopwatch (elapsed)** sessions, and a live TUI dashboard.
 
 ## Installation
 
@@ -26,6 +26,9 @@ pomo init
 # 2. Start a 25-minute session
 pomo start "Write README" -p my-project
 
+# Or: stopwatch (elapsed time, no countdown)
+pomo start "Deep work" -p my-project --elapsed
+
 # 3. Check on your timer
 pomo status
 
@@ -39,16 +42,25 @@ The background daemon starts automatically when you run `pomo start`; you do not
 
 Run `pomo` with no arguments for the interactive command picker (arrow keys, fuzzy search).
 
-Running `pomo start` without a task name opens interactive start: pick from recent tasks and projects, set duration and tags.
+Running `pomo start` without a task name opens interactive start: pick from recent tasks and projects, choose **Pomodoro (countdown)** or **Stopwatch (elapsed)**, then duration (countdown only) and tags.
+
+### Session modes
+
+| Mode | Command | Timer | Distractions | `pomo extend` |
+|------|---------|-------|----------------|---------------|
+| **Pomodoro (default)** | `pomo start "Task"` | Counts down from `--duration` (default 25m); ends with `complete` at zero | May add time if `distraction_extend_minutes` > 0 | Adds configured minutes |
+| **Stopwatch (elapsed)** | `pomo start "Task" --elapsed` | Counts **up** while running; no target time | Logged only; timer does **not** extend | Not available (error) |
+
+Stopwatch sessions still support pause, resume, idle auto-pause, and `stop` / `kill` to end the session. Logged duration is the elapsed running time (paused time excluded), same wall-clock idea as the countdown timer.
 
 ### Tips
 
 - **Daemon:** You do not need to run the daemon manually; `pomo start` starts it when needed.
 - **Last task:** `pomo start --last` (or `-l`) resumes the most recently used task.
 - **Tags:** `pomo start "Task" -t focus -t deep-work` attaches tags to the session (stored for each session; useful for your own records and interactive tag hints).
-- **Distractions:** `pomo distract` with an optional description. Each distraction can extend the timer by a configured number of minutes (default: 2).
-- **Lifecycle events:** Session events (`start`, `pause`, `resume`, `extend`, `stop`, `kill`, `idle`, `complete`) are logged for later analysis.
-- **Git:** Current repo and branch are saved with each session when you are inside a git working tree.
+- **Distractions:** `pomo distract` with an optional description. On **countdown** sessions, each distraction can extend the timer by `distraction_extend_minutes` (default: 2). On **elapsed** sessions, distractions are recorded only; the clock does not change.
+- **Lifecycle events:** Session events (`start`, `pause`, `resume`, `extend`, `stop`, `kill`, `idle`, `complete`) are logged for later analysis. Elapsed sessions do not auto-`complete` from the timer and do not emit `extend` from distractions.
+- **Git:** Current repo and branch are saved with each session when you are inside a git working tree. Override with `--repo` and/or `--branch` on `pomo start` (e.g. when the session is not tied to your cwd).
 - **Config:** `pomo config` edits defaults; settings live in `~/.config/pomocli/config.toml`.
 - **Interactive cancel:** Use `Ctrl-C` to cleanly exit interactive picker/start/config flows.
 - **Reports:** `pomo report today` (or `week`, `month`, `quarter`, `all`) uses your configured **timezone** for “today” and calendar periods (see [Configuration](#configuration)).
@@ -58,7 +70,7 @@ Running `pomo start` without a task name opens interactive start: pick from rece
 | Command | Shorthand | Description |
 |---------|-----------|-------------|
 | `pomo` | | Interactive command picker |
-| `pomo start [TASK]` | `ss` | Start a Pomodoro session |
+| `pomo start [TASK]` | `ss` | Start a session (countdown Pomodoro or `--elapsed` stopwatch) |
 | `pomo pause` | `pp` | Pause the current session |
 | `pomo resume` | `rr` | Resume a paused session |
 | `pomo stop` | `sp` | Stop and save the current session |
@@ -92,11 +104,16 @@ pomo start "Task name" [OPTIONS]
 
 Options:
   -p, --project TEXT      Project name
-  -d, --duration INTEGER  Duration in minutes (default: 25)
+  -d, --duration INTEGER  Duration in minutes (default: 25; ignored with --elapsed)
   -e, --estimate INTEGER  Estimated total minutes for the task
   -l, --last              Resume the last task
   -t, --tag TEXT          Tags (repeatable)
+      --elapsed           Stopwatch mode: elapsed time, no distraction extension
+      --repo TEXT         Override git repo name stored on the session
+      --branch TEXT       Override git branch stored on the session
 ```
+
+The same options apply to the `ss` shorthand.
 
 ## Configuration
 
@@ -125,7 +142,7 @@ Everything under `~/.config/pomocli/`:
 
 | Path | Purpose |
 |------|---------|
-| `pomocli.db` | SQLite: tasks, sessions, tags, distractions |
+| `pomocli.db` | SQLite: tasks, sessions (`timer_mode`: `countdown` or `elapsed`), tags, distractions |
 | `config.toml` | User preferences |
 | `backups/` | Default directory for automatic and manual backups |
 
@@ -162,7 +179,7 @@ After install, `pomo start` can auto-launch the app; you can also open it manual
 
 ### Features
 
-- **Menu bar** — idle `🍅`; running `🍅 MM:SS`; paused `⏸ MM:SS`
+- **Menu bar** — idle `🍅`; running countdown `🍅 MM:SS` (time remaining); running stopwatch `🍅 ⏱ MM:SS` (time elapsed); paused `⏸ MM:SS` (remaining or elapsed to match the session mode)
 - **Menu** — Pause / Resume, Stop, Quit
 - **Global hotkey** — default Cmd+Shift+D (`hotkey_distraction` in config)
 - **Idle detection** — auto-pause when away (Quartz-based)
@@ -203,7 +220,7 @@ flowchart TB
   subgraph daemon_pkg["pomocli.daemon"]
     PyClient["client.py<br/>DaemonClient"]
     Server["server.py<br/>DaemonServer"]
-    Timer["timer.py<br/>PomodoroTimer"]
+    Timer["timer.py<br/>PomodoroTimer<br/>(countdown + elapsed)"]
     Idle["macos.py<br/>IdleDetector"]
   end
 
