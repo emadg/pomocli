@@ -1351,6 +1351,15 @@ def config_cmd():
             raise typer.Abort()
         cfg["hotkey_distraction"] = hotkey
 
+        note_prompt = questionary.confirm(
+            "macOS menu bar: show a dialog for an optional distraction note before logging? "
+            "(Cancel skips logging; 2s flash/cooldown always apply after a successful log.)",
+            default=bool(cfg.get("distraction_note_prompt", DEFAULT_CONFIG["distraction_note_prompt"])),
+        ).ask()
+        if note_prompt is None:
+            raise typer.Abort()
+        cfg["distraction_note_prompt"] = note_prompt
+
         tz = questionary.text(
             "Timezone (e.g. auto, Europe/Berlin):",
             default=cfg.get("timezone", DEFAULT_CONFIG["timezone"]),
@@ -1385,6 +1394,10 @@ def config_cmd():
         table.add_row(label, str(cfg[key]))
     table.add_row("Sound enabled", str(cfg["sound_enabled"]))
     table.add_row("Distraction hotkey", cfg["hotkey_distraction"])
+    table.add_row(
+        "Distraction note prompt (macOS)",
+        str(cfg.get("distraction_note_prompt", DEFAULT_CONFIG["distraction_note_prompt"])),
+    )
     table.add_row("Timezone", cfg["timezone"])
     table.add_row("Backup directory", cfg["backup_dir"] or "(default)")
     table.add_row("Compress backups", str(cfg["backup_compress"]))
