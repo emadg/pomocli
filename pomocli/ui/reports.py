@@ -189,17 +189,17 @@ def generate_report(
         console.print(detail_table)
         fm = summarize_focus_metrics(cast(Sequence[Mapping[str, Any]], session_rows))
         fb_line = (
-            f"[bold]Focus block success:[/bold] {fm.focus_block_success_rate:.2f} "
+            f"[bold]Focus Block Success (FBS):[/bold] {fm.focus_block_success_rate:.2f} "
             f"({fm.focus_block_numerator:.1f}/{fm.focus_block_qualifying_count} qualifying ≥25m)"
             if fm.focus_block_success_rate is not None
-            else "[bold]Focus block success:[/bold] n/a (no qualifying ≥25m sessions)"
+            else "[bold]Focus Block Success (FBS):[/bold] n/a (no qualifying ≥25m sessions)"
         )
         aq_line = (
-            f"[bold]Attention quality:[/bold] {fm.attention_quality_rate:.2f} "
+            f"[bold]Attention Quality (ATQ):[/bold] {fm.attention_quality_rate:.2f} "
             f"({format_duration_hm(fm.attention_quality_numerator_seconds)} / "
             f"{format_duration_hm(fm.attention_quality_denominator_seconds)} wall)"
             if fm.attention_quality_rate is not None
-            else "[bold]Attention quality:[/bold] n/a"
+            else "[bold]Attention Quality (ATQ):[/bold] n/a"
         )
         console.print(f"[bold]Total logged:[/bold] {format_duration_hm(total_logged_sessions)}")
         console.print(fb_line)

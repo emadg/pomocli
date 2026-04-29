@@ -127,7 +127,9 @@ def _print_one_session(session_id: int, timezone_config: str, console: Console) 
     rec_sec = total_distraction_recovery_seconds(d_ts, st_sql, end_for_pause)
     eff = attention_quality_effective_seconds(metrics_row, events, d_ts)
 
-    console.print("[bold]Attention quality[/bold] [dim](same rules as reports)[/dim]")
+    console.print(
+        "[bold]Attention Quality (ATQ)[/bold] [dim](same rules as reports)[/dim]"
+    )
     console.print(
         f"  pause time (session_events):     {format_duration_hms(pause_sec)}  ({pause_sec}s)"
     )
@@ -161,7 +163,9 @@ def _print_one_session(session_id: int, timezone_config: str, console: Console) 
     pause_n = sum(1 for e in events if str(e["event_type"]) == "pause")
     fb_score = focus_block_session_score(metrics_row, pause_n, dc)
     qual = wall_sec is not None and wall_sec >= 25 * 60 and str(row.get("status")) != "killed"
-    console.print("[bold]Focus block[/bold] [dim](reference; qualifying = wall ≥25m, not killed)[/dim]")
+    console.print(
+        "[bold]Focus Block Success (FBS)[/bold] [dim](reference; qualifying = wall ≥25m, not killed)[/dim]"
+    )
     console.print(
         f"  pause events: {pause_n}   distractions: {dc}   qualifying: {'yes' if qual else 'no'}"
     )

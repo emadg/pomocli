@@ -35,8 +35,8 @@ def test_generate_report_includes_session_details_and_hm_totals(mocker, tmp_path
     assert "1h 5m" in out
     assert "Focus rate:" not in out
     assert "Total logged:" in out
-    assert "Focus block success:" in out
-    assert "Attention quality:" in out
+    assert "Focus Block Success (FBS):" in out
+    assert "Attention Quality (ATQ):" in out
 
 
 def test_generate_report_daily_trend_fbs_atq_two_days(mocker, tmp_path):

@@ -375,7 +375,7 @@ def test_session_inspect_by_id_happy_path(mocker, tmp_path):
     assert result.exit_code == 0
     assert "Session events" in result.stdout
     assert "pause" in result.stdout
-    assert "Attention quality" in result.stdout
+    assert "Attention Quality (ATQ)" in result.stdout
     assert "duration_logged" in result.stdout or "25m" in result.stdout
 
 
