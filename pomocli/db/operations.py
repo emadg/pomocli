@@ -260,6 +260,24 @@ def get_session_events(session_id: int) -> List[sqlite3.Row]:
     return rows
 
 
+def get_distraction_timestamps_for_session(session_id: int) -> List[str]:
+    """Return distraction timestamps (UTC SQL strings) ordered by time."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT timestamp
+        FROM distractions
+        WHERE session_id = ?
+        ORDER BY timestamp ASC, id ASC
+        """,
+        (session_id,),
+    )
+    rows = [str(r["timestamp"]) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+
 def get_session_by_id(session_id: int) -> Optional[sqlite3.Row]:
     """Fetch a single session row by its primary key."""
     conn = get_connection()
