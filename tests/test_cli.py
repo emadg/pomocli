@@ -10,7 +10,8 @@ runner = CliRunner()
 def test_cli_help():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "A lightweight, feature-rich CLI Pomodoro timer" in result.stdout
+    assert "CLI Pomodoro timer" in result.stdout
+    assert "focus metrics" in result.stdout
 
 def test_cli_status_when_daemon_down(mocker):
     # Mock the client to return an error (daemon down)
@@ -49,10 +50,10 @@ def test_cli_shorthand_and_help():
     # Test -h works
     result = runner.invoke(app, ["-h"])
     assert result.exit_code == 0
-    assert "A lightweight, feature-rich CLI Pomodoro timer" in result.stdout
+    assert "CLI Pomodoro timer" in result.stdout
 
     # Shorthand commands should appear in main help
-    for alias in ("ss", "pp", "rr", "sp", "dd", "stt", "ssn"):
+    for alias in ("ss", "pp", "rr", "sp", "cm", "dd", "stt", "ssn"):
         assert alias in result.stdout, f"shorthand '{alias}' missing from help"
 
     # Test subcommand -h works

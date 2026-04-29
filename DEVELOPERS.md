@@ -3,7 +3,7 @@
 ## Timer modes (daemon / DB)
 
 - **Countdown (default):** `timer.py` decrements `time_left`; natural end calls `on_complete` and marks the session completed. Logged seconds use `min(duration - time_left, focus_duration)` (also exposed as `logged_focus_seconds()`).
-- **Elapsed:** `start_elapsed(session_id)` increments `elapsed_seconds` only while `RUNNING`. Stop/kill persist `elapsed_seconds`. The Unix-socket `start` command passes `timer_mode: "elapsed"`; status JSON always includes `timer_mode` and `elapsed_seconds` for UIs.
+- **Elapsed:** `start_elapsed(session_id)` increments `elapsed_seconds` only while `RUNNING`. Stop/kill persist `elapsed_seconds`. **`complete` socket command** (CLI `pomo complete`, macOS menu) marks the session **`completed`**, logs a `complete` event, plays the completion sound, then stops the timer—mirroring countdown’s natural `on_complete` path. **`stop`** still sets status **`stopped`**. The Unix-socket `start` command passes `timer_mode: "elapsed"`; status JSON always includes `timer_mode` and `elapsed_seconds` for UIs.
 - **Schema:** `sessions.timer_mode` defaults to `countdown`. New installs get the column from `schema.sql`; existing DBs get it via `_apply_schema_migrations()` in `db/connection.py` (run as part of `pomo init` / any code path that calls `init_db()`).
 
 ## Time and Timezones
@@ -37,17 +37,16 @@
   - Safe delete path for related session rows (`tags`, `distractions`, `session_events`), with foreign keys enabled in DB connections.
   - Added shorthand discoverability/examples for `session` commands (`ssn`).
 - Human-readable duration formatting (`Xh Ym`) across list/report summaries.
-- **Elapsed (stopwatch) sessions:** `pomo start --elapsed` and interactive “Stopwatch (elapsed time)”. Daemon `PomodoroTimer` supports `TimerMode.elapsed` (`start_elapsed`): counts up while running, no `on_complete` from the timer; `get_status()` exposes `timer_mode` and `elapsed_seconds`. Distractions do not extend the clock; `pomo extend` returns an error. Sessions persist `timer_mode` on the `sessions` table (`countdown` | `elapsed`); `init_db()` runs an idempotent `ALTER` for existing databases. CLI overrides: `--repo`, `--branch`. macOS menu bar shows elapsed with a stopwatch prefix; `pomo status` and `pomo dash` branch on `timer_mode`.
+- **Elapsed (stopwatch) sessions:** `pomo start --elapsed` and interactive “Stopwatch (elapsed time)”. Daemon `PomodoroTimer` supports `TimerMode.elapsed` (`start_elapsed`): counts up while running, no `on_complete` from the timer; `get_status()` exposes `timer_mode` and `elapsed_seconds`. Distractions do not extend the clock; `pomo extend` returns an error. Sessions persist `timer_mode` on the `sessions` table (`countdown` | `elapsed`); `init_db()` runs an idempotent `ALTER` for existing databases. CLI overrides: `--repo`, `--branch`. macOS menu bar shows elapsed with a stopwatch prefix; `pomo status` and `pomo dash` branch on `timer_mode`. **`pomo complete` / `cm`** and the macOS **Complete session** menu item call the daemon **`complete`** command for elapsed sessions only.
+- **Focus metrics (`pomocli/metrics/focus.py`):** **Focus block success rate** (qualifying sessions with wall span ≥25 minutes; per-session score 1.0 minus 0.1 per pause event and per distraction, floored at 0). **Attention quality rate** (wall span minus pause intervals from `session_events` and up to 10 minutes distraction recovery per distraction, capped by time remaining in the session). Surfaced on `pomo report` session-detail footers and `pomo session list`. Implementation uses `get_session_events`, `get_distraction_timestamps_for_session`, and `get_sessions_in_range` rows.
+- **Session management polish:** `pomo session edit|cancel|delete` refuse the session currently bound to the daemon (or DB rows with `end_time` NULL and status `running`/`paused`). **`pomo session edit`** with no `--status`/`--duration` runs an interactive flow (when TTY): current values, field picker, confirmation summary before write.
 
 ### Next Steps / High Priority
 
-- **Session Management Polish (Phase 4 continuation):**
-  - Add stronger safety checks around mutating/deleting sessions that are currently active.
-  - Improve session edit UX (interactive mode, validation hints, and confirmation summaries).
-  - Decide whether short session IDs should remain derived or be stored as a persisted unique column.
-- **Insights on top of event stream:**
-  - Use `session_events` in user-facing analytics (not only persistence), including event-type summaries and drill-down.
-  - Treat `sessions.timer_mode = 'elapsed'` explicitly where metrics assume a planned duration (e.g. focus rate vs target block length).
+- Decide whether short session IDs should remain derived or be stored as a persisted unique column.
+- **Insights on top of event stream (continued):**
+  - Event-type summaries and drill-down beyond the two headline rates.
+  - Treat `sessions.timer_mode = 'elapsed'` explicitly where other metrics assume a planned duration (e.g. classic focus rate vs target block length).
 - **CLI / UX Improvements:**
   - Customize pomo shortcut keys for start, pause, resume, distract.
 - **Distractions:**

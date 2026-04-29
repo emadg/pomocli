@@ -132,13 +132,21 @@ class CustomHelpGroup(TyperGroup):
 
 app = typer.Typer(
     name="pomo",
-    help="A lightweight, feature-rich CLI Pomodoro timer (countdown and stopwatch / elapsed sessions).",
+    help=(
+        "CLI Pomodoro timer: countdown and stopwatch (elapsed) sessions, reports with "
+        "focus metrics, session history, git-aware logging."
+    ),
     add_completion=True,
     no_args_is_help=False,
     context_settings={"help_option_names": ["-h", "--help"]},
     cls=CustomHelpGroup,
 )
-session_app = typer.Typer(help="Manage past sessions.")
+session_app = typer.Typer(
+    help=(
+        "List, edit, cancel, or delete saved sessions. Refuses the live timer session; "
+        "session edit with no --status/--duration runs interactively in a TTY."
+    ),
+)
 app.add_typer(session_app, name="session")
 app.add_typer(session_app, name="ssn", hidden=True)
 console = Console()
@@ -714,7 +722,11 @@ def _resume_cmd_impl():
 def stop(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
 ):
-    """Stop and save the current session."""
+    """Stop and save the current session (saved as stopped).
+
+    For stopwatch (--elapsed) sessions, use pomo complete if you want completed
+    status and the same finish semantics as a countdown reaching zero.
+    """
     _stop_cmd_impl(yes)
 
 @app.command(name="sp", hidden=True)
@@ -740,7 +752,11 @@ def _stop_cmd_impl(skip_confirm: bool = False):
 
 @app.command()
 def complete():
-    """Mark the current stopwatch (elapsed) session as completed."""
+    """Mark the current stopwatch (elapsed) session as completed.
+
+    Countdown sessions already complete when the timer hits zero; this command
+    only applies to elapsed mode and is rejected for countdown.
+    """
     _complete_cmd_impl()
 
 
@@ -926,7 +942,12 @@ def session_edit_cmd(
         None, "--duration", "-d", help="Duration logged in minutes"
     ),
 ):
-    """Edit a past session."""
+    """Edit status and/or logged duration for a saved session.
+
+    With ``--status`` and/or ``--duration``, applies immediately (non-interactive).
+    With neither flag, runs an interactive editor when stdin is a TTY (picker,
+    validation, confirmation). The active timer session cannot be edited.
+    """
     import questionary
 
     session_pk = _resolve_session_pk_or_exit(identifier)
@@ -1028,7 +1049,7 @@ def session_edit_cmd(
 def session_cancel_cmd(
     identifier: str = typer.Argument(..., help="Session short ID or numeric PK"),
 ):
-    """Cancel (kill) a past session."""
+    """Cancel (kill) a past session. Refuses the active timer session."""
     session_pk = _resolve_session_pk_or_exit(identifier)
     _abort_if_session_active(session_pk)
     changed = cancel_session(session_pk)
@@ -1050,7 +1071,7 @@ def session_delete_cmd(
     identifier: str = typer.Argument(..., help="Session short ID or numeric PK"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
 ):
-    """Delete a past session and related records."""
+    """Delete a past session and related records. Refuses the active timer session."""
     session_pk = _resolve_session_pk_or_exit(identifier)
     _abort_if_session_active(session_pk)
     session_row = get_session_by_id(session_pk)
@@ -1098,14 +1119,14 @@ def report(
         "today", help="Period to report on (today, week, month, quarter, all)"
     ),
 ):
-    """Show a summary report of logged time."""
+    """Show a summary report of logged time and session-detail focus metrics."""
     cfg = load_config()
     generate_report(period, timezone_config=cfg.get("timezone", "auto"))
 
 
 @session_app.command(name="list")
 def list_cmd():
-    """List today's sessions with status, focus rate, and notes."""
+    """List today's sessions with status, focus rate, block/attention metrics, and notes."""
     cfg = load_config()
     timezone_config = cfg.get("timezone", "auto")
     tz = get_display_tz(timezone_config)

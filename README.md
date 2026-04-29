@@ -32,8 +32,11 @@ pomo start "Deep work" -p my-project --elapsed
 # 3. Check on your timer
 pomo status
 
-# 4. Done early? Stop and save
+# 4. Done early? Stop and save (countdown or stopwatch)
 pomo stop
+
+# Stopwatch only: mark the block finished as "completed" (vs stopped)
+pomo complete
 ```
 
 The background daemon starts automatically when you run `pomo start`; you do not need to launch it separately.
@@ -51,7 +54,7 @@ Running `pomo start` without a task name opens interactive start: pick from rece
 | **Pomodoro (default)** | `pomo start "Task"` | Counts down from `--duration` (default 25m); ends with `complete` at zero | May add time if `distraction_extend_minutes` > 0 | Adds configured minutes |
 | **Stopwatch (elapsed)** | `pomo start "Task" --elapsed` | Counts **up** while running; no target time | Logged only; timer does **not** extend | Not available (error) |
 
-Stopwatch sessions still support pause, resume, idle auto-pause, and `stop` / `kill` to end the session. Logged duration is the elapsed running time (paused time excluded), same wall-clock idea as the countdown timer.
+Stopwatch sessions still support pause, resume, idle auto-pause, and `stop` / `kill` to end the session. Use **`pomo complete`** (or `pomo cm`) to end a stopwatch with **`completed`** status and the completion sound—like a natural Pomodoro finish—whereas **`pomo stop`** saves as **`stopped`**. Logged duration is the elapsed running time (paused time excluded), same wall-clock idea as the countdown timer.
 
 ### Tips
 
@@ -59,11 +62,11 @@ Stopwatch sessions still support pause, resume, idle auto-pause, and `stop` / `k
 - **Last task:** `pomo start --last` (or `-l`) resumes the most recently used task.
 - **Tags:** `pomo start "Task" -t focus -t deep-work` attaches tags to the session (stored for each session; useful for your own records and interactive tag hints).
 - **Distractions:** `pomo distract` with an optional description. On **countdown** sessions, each distraction can extend the timer by `distraction_extend_minutes` (default: 2). On **elapsed** sessions, distractions are recorded only; the clock does not change.
-- **Lifecycle events:** Session events (`start`, `pause`, `resume`, `extend`, `stop`, `kill`, `idle`, `complete`) are logged for later analysis. Elapsed sessions do not auto-`complete` from the timer and do not emit `extend` from distractions.
+- **Lifecycle events:** Session events (`start`, `pause`, `resume`, `extend`, `stop`, `kill`, `idle`, `complete`) are logged for later analysis. Countdown sessions emit `complete` when the timer reaches zero. Elapsed sessions do not auto-complete; use **`pomo complete`** (daemon `complete` command) to log `complete` and set status `completed`. Elapsed sessions do not emit `extend` from distractions.
 - **Git:** Current repo and branch are saved with each session when you are inside a git working tree. Override with `--repo` and/or `--branch` on `pomo start` (e.g. when the session is not tied to your cwd).
 - **Config:** `pomo config` edits defaults; settings live in `~/.config/pomocli/config.toml`.
 - **Interactive cancel:** Use `Ctrl-C` to cleanly exit interactive picker/start/config flows.
-- **Reports:** `pomo report today` (or `week`, `month`, `quarter`, `all`) uses your configured **timezone** for “today” and calendar periods (see [Configuration](#configuration)).
+- **Reports:** `pomo report today` (or `week`, `month`, `quarter`, `all`) uses your configured **timezone** for “today” and calendar periods (see [Configuration](#configuration)). Session detail footers include **focus block success** (≥25m qualifying sessions, pauses and distractions) and **attention quality** (wall time vs pauses and capped distraction recovery).
 
 ## Commands
 
@@ -73,13 +76,14 @@ Stopwatch sessions still support pause, resume, idle auto-pause, and `stop` / `k
 | `pomo start [TASK]` | `ss` | Start a session (countdown Pomodoro or `--elapsed` stopwatch) |
 | `pomo pause` | `pp` | Pause the current session |
 | `pomo resume` | `rr` | Resume a paused session |
-| `pomo stop` | `sp` | Stop and save the current session |
+| `pomo stop` | `sp` | Stop and save the current session (`stopped`) |
+| `pomo complete` | `cm` | **Stopwatch only:** finish session as `completed` (same idea as countdown reaching zero) |
 | `pomo kill` | | Abort session without marking completed |
 | `pomo distract [DESC]` | `dd` | Log a distraction |
 | `pomo extend` | `ee` | Extend the current session (configured minutes) |
 | `pomo status` | `stt` | Show timer status |
-| `pomo session list` | `ssn list` | List today's sessions with status, focus rate, and notes |
-| `pomo session <subcommand>` | `ssn <subcommand>` | Manage past sessions (`list`, `edit`, `cancel`, `delete`) |
+| `pomo session list` | `ssn list` | List today's sessions with status, focus rate, focus-block / attention-quality metrics, and notes |
+| `pomo session <subcommand>` | `ssn <subcommand>` | Manage past sessions (`list`, `edit`, `cancel`, `delete`). You cannot edit, cancel, or delete the **active** timer session until it is stopped or completed. |
 | `pomo report [PERIOD]` | | Summary + session detail report: `today`, `week`, `month`, `quarter`, or `all` |
 | `pomo backup` | | Create a manual database backup |
 | `pomo dash` | | Live TUI dashboard (`--detail minimal`, `normal`, or `full`) |
@@ -180,7 +184,7 @@ After install, `pomo start` can auto-launch the app; you can also open it manual
 ### Features
 
 - **Menu bar** — idle `🍅`; running countdown `🍅 MM:SS` (time remaining); running stopwatch `🍅 ⏱ MM:SS` (time elapsed); paused `⏸ MM:SS` (remaining or elapsed to match the session mode)
-- **Menu** — Pause / Resume, Stop, Quit
+- **Menu** — Pause / Resume, Stop, **Complete session** (stopwatch / elapsed only; hidden for countdown), Quit
 - **Global hotkey** — default Cmd+Shift+D (`hotkey_distraction` in config)
 - **Idle detection** — auto-pause when away (Quartz-based)
 
@@ -230,6 +234,10 @@ flowchart TB
     Logo["logo.py"]
   end
 
+  subgraph metrics_pkg["pomocli.metrics"]
+    FocusM["focus.py<br/>block + attention rates"]
+  end
+
   subgraph data_pkg["pomocli.db"]
     Conn["connection.py + schema.sql"]
     Ops["operations.py"]
@@ -254,6 +262,7 @@ flowchart TB
   CLI --> Reports
   CLI --> Dash
   CLI --> Logo
+  CLI --> FocusM
 
   Dash --> PyClient
 
@@ -272,6 +281,8 @@ flowchart TB
   Ops --> TimeUtil
   Reports --> Conn
   Reports --> TimeUtil
+  Reports --> FocusM
+  FocusM --> Ops
   Backup --> SQLite
   Conn --> SQLite
 
