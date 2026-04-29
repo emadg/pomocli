@@ -34,3 +34,5 @@ def test_generate_report_includes_session_details_and_hm_totals(mocker, tmp_path
     assert "Total Time Logged:" in out
     assert "1h 5m" in out
     assert "Focus rate:" in out
+    assert "Focus block success:" in out
+    assert "Attention quality:" in out

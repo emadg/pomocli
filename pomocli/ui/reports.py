@@ -4,6 +4,7 @@ from typing import DefaultDict
 from collections import defaultdict
 from ..db.connection import get_connection
 from ..db.operations import get_sessions_in_range
+from ..metrics.focus import summarize_focus_metrics
 from ..time_util import (
     report_time_bounds,
     get_display_tz,
@@ -131,10 +132,26 @@ def generate_report(period: str = "today", *, timezone_config: str = "auto"):
         console.print()
         console.print(detail_table)
         focus_rate = (completed_sessions / len(session_rows)) * 100
+        fm = summarize_focus_metrics(session_rows)
+        fb_line = (
+            f"[bold]Focus block success:[/bold] {fm.focus_block_success_rate:.2f} "
+            f"({fm.focus_block_numerator:.1f}/{fm.focus_block_qualifying_count} qualifying ≥25m)"
+            if fm.focus_block_success_rate is not None
+            else "[bold]Focus block success:[/bold] n/a (no qualifying ≥25m sessions)"
+        )
+        aq_line = (
+            f"[bold]Attention quality:[/bold] {fm.attention_quality_rate:.2f} "
+            f"({format_duration_hm(fm.attention_quality_numerator_seconds)} / "
+            f"{format_duration_hm(fm.attention_quality_denominator_seconds)} wall)"
+            if fm.attention_quality_rate is not None
+            else "[bold]Attention quality:[/bold] n/a"
+        )
         console.print(
             f"[bold]Focus rate:[/bold] {focus_rate:.0f}% ({completed_sessions}/{len(session_rows)} completed) | "
             f"[bold]Total logged:[/bold] {format_duration_hm(total_logged_sessions)}"
         )
+        console.print(fb_line)
+        console.print(aq_line)
 
     if trend_rows and period != "today":
         console.print("\n[bold]Daily Trend:[/bold]\n")
