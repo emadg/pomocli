@@ -1,7 +1,7 @@
 import typer
 from rich.console import Console
 from rich.table import Table
-from typing import Optional, List
+from typing import Any, Optional, List
 import subprocess
 import sys
 import os
@@ -32,6 +32,7 @@ from ..db.backup import run_db_backup, resolve_backup_dir
 from ..config import load_config, save_config, DEFAULT_CONFIG
 from ..utils.git import get_git_context
 from ..time_util import report_time_bounds, get_display_tz, format_local, format_duration_hm
+from ..metrics.focus import summarize_focus_metrics
 from .. import __build__
 
 from typer.core import TyperGroup
@@ -46,6 +47,7 @@ COMMAND_SHORTHANDS = {
     "pause": "pp",
     "resume": "rr",
     "stop": "sp",
+    "complete": "cm",
     "distract": "dd",
     "status": "stt",
     "extend": "ee",
@@ -414,6 +416,7 @@ def interactive_mode() -> None:
         "Pause session": "pause",
         "Resume session": "resume",
         "Stop session": "stop",
+        "Complete stopwatch session": "complete",
         "Kill session": "kill",
         "Log distraction": "distract",
         "Extend session": "extend",
@@ -463,6 +466,8 @@ def interactive_mode() -> None:
         _resume_cmd_impl()
     elif cmd == "stop":
         _stop_cmd_impl(skip_confirm=True)
+    elif cmd == "complete":
+        _complete_cmd_impl()
     elif cmd == "kill":
         kill()
     elif cmd == "extend":
@@ -734,6 +739,28 @@ def _stop_cmd_impl(skip_confirm: bool = False):
 
 
 @app.command()
+def complete():
+    """Mark the current stopwatch (elapsed) session as completed."""
+    _complete_cmd_impl()
+
+
+@app.command(name="cm", hidden=True)
+def complete_shorthand():
+    """Shorthand for complete."""
+    _complete_cmd_impl()
+
+
+def _complete_cmd_impl():
+    response = client.complete()
+    if response.get("status") == "ok":
+        console.print(
+            "[bold green]Stopwatch session completed and saved.[/bold green]"
+        )
+    else:
+        console.print(f"[bold red]Error: {response.get('message')}[/bold red]")
+
+
+@app.command()
 def kill():
     """Abort the current session without saving as completed."""
     response = client.kill()
@@ -846,6 +873,51 @@ def _resolve_session_pk_or_exit(identifier: str) -> int:
     return resolved
 
 
+def _get_daemon_session_id() -> Optional[int]:
+    if not is_daemon_running():
+        return None
+    resp = client.status()
+    if resp.get("status") != "ok":
+        return None
+    sid = (resp.get("data") or {}).get("session_id")
+    return int(sid) if sid is not None else None
+
+
+def _session_row_field(row: Any, key: str, default: Any = None) -> Any:
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        return row.get(key, default)
+    try:
+        return row[key]
+    except (KeyError, TypeError, IndexError):
+        return default
+
+
+def _session_is_locked_active(session_pk: int) -> bool:
+    """True if this session is bound to the live timer or still open in the DB."""
+    row = get_session_by_id(session_pk)
+    if not row:
+        return False
+    live = _get_daemon_session_id()
+    if live is not None and live == session_pk:
+        return True
+    end_time = _session_row_field(row, "end_time")
+    status = str(_session_row_field(row, "status", "") or "")
+    if end_time is None and status in ("running", "paused"):
+        return True
+    return False
+
+
+def _abort_if_session_active(session_pk: int) -> None:
+    if _session_is_locked_active(session_pk):
+        console.print(
+            "[bold red]That session is still active. Stop it, use `pomo complete` for a "
+            "stopwatch session, or kill it before editing, cancelling, or deleting.[/bold red]"
+        )
+        raise typer.Exit(1)
+
+
 @session_app.command("edit")
 def session_edit_cmd(
     identifier: str = typer.Argument(..., help="Session short ID or numeric PK"),
@@ -855,24 +927,89 @@ def session_edit_cmd(
     ),
 ):
     """Edit a past session."""
-    if status is None and duration is None:
+    import questionary
+
+    session_pk = _resolve_session_pk_or_exit(identifier)
+    _abort_if_session_active(session_pk)
+
+    eff_status, eff_duration = status, duration
+    session_row = get_session_by_id(session_pk)
+    cur_status = str(_session_row_field(session_row, "status", "?") or "?")
+    cur_min = int(_session_row_field(session_row, "duration_logged", 0) or 0) // 60
+
+    if eff_status is None and eff_duration is None:
+        if not _is_interactive():
+            console.print(
+                "[bold red]Provide at least one field: --status and/or --duration, "
+                "or run interactively.[/bold red]"
+            )
+            raise typer.Exit(1)
         console.print(
-            "[bold red]Provide at least one field: --status and/or --duration.[/bold red]"
+            f"[dim]Current: status={cur_status}, duration_logged={cur_min} minutes[/dim]"
         )
-        raise typer.Exit(1)
-    if status is not None and status not in SESSION_STATUS_VALUES:
+        choice = questionary.select(
+            "What to change?",
+            choices=[
+                "Status only",
+                "Duration only",
+                "Status and duration",
+            ],
+        ).ask()
+        if choice is None:
+            console.print("[bold yellow]Cancelled.[/bold yellow]")
+            raise typer.Exit(0)
+        status_choices = sorted(SESSION_STATUS_VALUES)
+        if choice in ("Status only", "Status and duration"):
+            picked = questionary.select(
+                "New status:",
+                choices=status_choices,
+            ).ask()
+            if picked is None:
+                console.print("[bold yellow]Cancelled.[/bold yellow]")
+                raise typer.Exit(0)
+            eff_status = picked
+        if choice in ("Duration only", "Status and duration"):
+            raw = questionary.text(
+                "New duration logged (minutes, integer):",
+                default=str(cur_min),
+            ).ask()
+            if raw is None or str(raw).strip() == "":
+                console.print("[bold yellow]Cancelled.[/bold yellow]")
+                raise typer.Exit(0)
+            try:
+                eff_duration = int(str(raw).strip())
+            except ValueError:
+                console.print("[bold red]Duration must be a whole number of minutes.[/bold red]")
+                raise typer.Exit(1)
+            if eff_duration < 0:
+                console.print("[bold red]Duration must be >= 0 minutes.[/bold red]")
+                raise typer.Exit(1)
+
+    if eff_status is not None and eff_status not in SESSION_STATUS_VALUES:
         allowed = ", ".join(sorted(SESSION_STATUS_VALUES))
-        console.print(f"[bold red]Invalid status '{status}'. Use one of: {allowed}[/bold red]")
+        console.print(f"[bold red]Invalid status '{eff_status}'. Use one of: {allowed}[/bold red]")
         raise typer.Exit(1)
-    if duration is not None and duration < 0:
+    if eff_duration is not None and eff_duration < 0:
         console.print("[bold red]Duration must be >= 0 minutes.[/bold red]")
         raise typer.Exit(1)
 
-    session_pk = _resolve_session_pk_or_exit(identifier)
+    if session_row and _is_interactive() and status is None and duration is None:
+        new_status = eff_status if eff_status is not None else cur_status
+        new_min = eff_duration if eff_duration is not None else cur_min
+        summary = (
+            f"Session [bold]{format_session_public_id(session_pk, session_row['start_time'])}[/bold]: "
+            f"status [yellow]{cur_status}[/yellow] → [green]{new_status}[/green], "
+            f"duration [yellow]{cur_min}m[/yellow] → [green]{new_min}m[/green]"
+        )
+        console.print(summary)
+        if not typer.confirm("Apply this update?", default=False):
+            console.print("[bold yellow]No changes saved.[/bold yellow]")
+            raise typer.Exit(0)
+
     changed = edit_session(
         session_pk,
-        status=status,
-        duration_logged_seconds=(duration * 60) if duration is not None else None,
+        status=eff_status,
+        duration_logged_seconds=(eff_duration * 60) if eff_duration is not None else None,
     )
     if not changed:
         console.print("[bold red]No session was updated.[/bold red]")
@@ -893,6 +1030,7 @@ def session_cancel_cmd(
 ):
     """Cancel (kill) a past session."""
     session_pk = _resolve_session_pk_or_exit(identifier)
+    _abort_if_session_active(session_pk)
     changed = cancel_session(session_pk)
     if not changed:
         console.print("[bold red]No session was cancelled.[/bold red]")
@@ -914,6 +1052,7 @@ def session_delete_cmd(
 ):
     """Delete a past session and related records."""
     session_pk = _resolve_session_pk_or_exit(identifier)
+    _abort_if_session_active(session_pk)
     session_row = get_session_by_id(session_pk)
     display_id = (
         format_session_public_id(session_pk, session_row["start_time"])
@@ -1016,10 +1155,26 @@ def list_cmd():
 
     console.print(table)
     focus_rate = (completed / len(rows)) * 100
+    fm = summarize_focus_metrics(rows)
+    fb_line = (
+        f"[bold]Focus block success:[/bold] {fm.focus_block_success_rate:.2f} "
+        f"({fm.focus_block_numerator:.1f}/{fm.focus_block_qualifying_count} qualifying ≥25m)"
+        if fm.focus_block_success_rate is not None
+        else "[bold]Focus block success:[/bold] n/a (no qualifying ≥25m sessions)"
+    )
+    aq_line = (
+        f"[bold]Attention quality:[/bold] {fm.attention_quality_rate:.2f} "
+        f"({format_duration_hm(fm.attention_quality_numerator_seconds)} / "
+        f"{format_duration_hm(fm.attention_quality_denominator_seconds)} wall)"
+        if fm.attention_quality_rate is not None
+        else "[bold]Attention quality:[/bold] n/a"
+    )
     console.print(
         f"[bold]Focus rate:[/bold] {focus_rate:.0f}% ({completed}/{len(rows)} completed) | "
         f"[bold]Total logged:[/bold] {format_duration_hm(total_logged)}"
     )
+    console.print(fb_line)
+    console.print(aq_line)
 
 
 @app.command()
