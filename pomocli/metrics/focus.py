@@ -61,6 +61,24 @@ def pause_seconds_from_events(
     return total
 
 
+def distraction_recovery_charge_seconds(
+    distraction_ts_sql: str,
+    session_start_sql: str,
+    session_end_sql: str,
+) -> int:
+    """
+    ``min(10 minutes, seconds remaining in session at distraction time)`` for one
+    distraction timestamp in ``[start, end)``; otherwise 0.
+    """
+    start_dt = parse_stored_utc(session_start_sql)
+    end_dt = parse_stored_utc(session_end_sql)
+    ts = parse_stored_utc(str(distraction_ts_sql))
+    if ts < start_dt or ts >= end_dt:
+        return 0
+    remaining = int(max(0, (end_dt - ts).total_seconds()))
+    return min(DISTRACTION_RECOVERY_CAP_SECONDS, remaining)
+
+
 def total_distraction_recovery_seconds(
     distraction_timestamps_sql: Sequence[str],
     session_start_sql: str,
@@ -70,15 +88,11 @@ def total_distraction_recovery_seconds(
     Sum ``min(10 minutes, seconds remaining in session at distraction time)`` per
     distraction whose timestamp falls in ``[start, end)``.
     """
-    start_dt = parse_stored_utc(session_start_sql)
-    end_dt = parse_stored_utc(session_end_sql)
     total = 0
     for raw in distraction_timestamps_sql:
-        ts = parse_stored_utc(str(raw))
-        if ts < start_dt or ts >= end_dt:
-            continue
-        remaining = int(max(0, (end_dt - ts).total_seconds()))
-        total += min(DISTRACTION_RECOVERY_CAP_SECONDS, remaining)
+        total += distraction_recovery_charge_seconds(
+            str(raw), session_start_sql, session_end_sql
+        )
     return total
 
 

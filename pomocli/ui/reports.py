@@ -1,6 +1,7 @@
 from rich.console import Console
 from rich.table import Table
-from typing import DefaultDict, Optional
+from datetime import tzinfo
+from typing import Any, DefaultDict, List, Mapping, Optional, Sequence, cast
 from collections import defaultdict
 from ..db.connection import get_connection
 from ..db.operations import get_sessions_in_range
@@ -9,12 +10,47 @@ from ..time_util import (
     report_time_bounds,
     report_time_bounds_last_n_calendar_days,
     get_display_tz,
-    parse_stored_utc,
     format_local,
     format_duration_hm,
+    local_date_iso_from_stored_utc,
 )
 
 console = Console()
+
+_EPS = 1e-9
+# Fixed width for daily FBS/ATQ numeric columns (monospace-friendly).
+_RATE_VALUE_W = 6
+
+
+def _rate_value_cell(prev: Optional[float], cur: Optional[float]) -> str:
+    """
+    Fixed-width colored cell for FBS or ATQ (green: n/a, no prior comparable, or
+    cur >= prev; red: both comparable and cur < prev).
+    """
+    w = _RATE_VALUE_W
+    if cur is None:
+        inner = "n/a".rjust(w)
+        return f"[green]{inner}[/green]"
+    inner = f"{cur:>{w}.2f}"
+    if prev is None or cur + _EPS >= prev:
+        tag = "green"
+    else:
+        tag = "red"
+    return f"[{tag}]{inner}[/{tag}]"
+
+
+def _sessions_by_local_day(
+    session_rows: List[Any], tz: tzinfo
+) -> DefaultDict[str, List[Any]]:
+    """Bucket sessions by **local start date** (see ``local_date_iso_from_stored_utc``)."""
+    by_day: DefaultDict[str, List[Any]] = defaultdict(list)
+    for sr in session_rows:
+        st = sr["start_time"] if hasattr(sr, "keys") else None
+        if not st:
+            continue
+        day = local_date_iso_from_stored_utc(str(st), tz)
+        by_day[day].append(sr)
+    return by_day
 
 def generate_report(
     period: str = "today",
@@ -22,11 +58,20 @@ def generate_report(
     timezone_config: str = "auto",
     last_n_days: Optional[int] = None,
 ):
-    """Generate a summary report for the given period or last N local calendar days."""
+    """
+    Generate a summary report for the given period or last N local calendar days.
+
+    Multi-day **Daily Trend** lines are: local start date, logged duration, fixed-width
+    FBS and ATQ (colored vs the prior day), then a bar scaled to the busiest day.
+    Sessions are bucketed by **local start date** (overnight sessions count on the
+    start day; see ``local_date_iso_from_stored_utc``).
+    """
     conn = get_connection()
     cursor = conn.cursor()
 
     tz = get_display_tz(timezone_config)
+    start_utc: Optional[str]
+    end_utc: Optional[str]
     if last_n_days is not None:
         start_utc, end_utc = report_time_bounds_last_n_calendar_days(last_n_days, tz)
         title_scope = f"Last {last_n_days} days"
@@ -72,17 +117,18 @@ def generate_report(
     raw_trend_rows = cursor.fetchall()
     session_rows = get_sessions_in_range(start_utc, end_utc)
     
-    # Group by local calendar date in Python
+    # Group logged duration by local **session start** calendar day (overnight
+    # sessions count entirely toward the start day, not the end day).
     daily_totals: DefaultDict[str, int] = defaultdict(int)
     for r in raw_trend_rows:
-        if not r['start_time']:
+        if not r["start_time"]:
             continue
-        dt_utc = parse_stored_utc(r['start_time'])
-        dt_local = dt_utc.astimezone(tz)
-        local_day = dt_local.date().isoformat()
-        daily_totals[local_day] += (r['duration_logged'] or 0)
+        local_day = local_date_iso_from_stored_utc(str(r["start_time"]), tz)
+        daily_totals[local_day] += int(r["duration_logged"] or 0)
         
-    trend_rows = [{"day": day, "daily_duration": dur} for day, dur in sorted(daily_totals.items())]
+    trend_rows: list[dict[str, Any]] = [
+        {"day": day, "daily_duration": dur} for day, dur in sorted(daily_totals.items())
+    ]
     
     conn.close()
     
@@ -101,14 +147,14 @@ def generate_report(
         task = row['task_name']
         sessions = str(row['session_count'])
         completed = str(row['completed_count'])
-        duration = row['total_duration'] or 0
+        duration = int(row["total_duration"] or 0)
         total_time += duration
-        
+
         table.add_row(project, task, sessions, completed, format_duration_hm(duration))
         
     console.print(table)
     
-    console.print(f"\n[bold]Total Time Logged:[/bold] {format_duration_hm(total_time)}")
+    console.print(f"\n[bold]Total Time Logged:[/bold] {format_duration_hm(int(total_time))}")
 
     if session_rows:
         detail_table = Table(title=f"Session Details ({title_scope})")
@@ -121,13 +167,10 @@ def generate_report(
         detail_table.add_column("Distract", justify="right", style="yellow")
         detail_table.add_column("Notes", style="white")
 
-        completed_sessions = 0
         total_logged_sessions = 0
         for row in session_rows:
             logged = int(row["duration_logged"] or 0)
             total_logged_sessions += logged
-            if row["status"] == "completed":
-                completed_sessions += 1
             session_display = (
                 row["public_id"] if "public_id" in row.keys() and row["public_id"] else str(row["id"])
             )
@@ -144,8 +187,7 @@ def generate_report(
 
         console.print()
         console.print(detail_table)
-        focus_rate = (completed_sessions / len(session_rows)) * 100
-        fm = summarize_focus_metrics(session_rows)
+        fm = summarize_focus_metrics(cast(Sequence[Mapping[str, Any]], session_rows))
         fb_line = (
             f"[bold]Focus block success:[/bold] {fm.focus_block_success_rate:.2f} "
             f"({fm.focus_block_numerator:.1f}/{fm.focus_block_qualifying_count} qualifying ≥25m)"
@@ -159,25 +201,44 @@ def generate_report(
             if fm.attention_quality_rate is not None
             else "[bold]Attention quality:[/bold] n/a"
         )
-        console.print(
-            f"[bold]Focus rate:[/bold] {focus_rate:.0f}% ({completed_sessions}/{len(session_rows)} completed) | "
-            f"[bold]Total logged:[/bold] {format_duration_hm(total_logged_sessions)}"
-        )
+        console.print(f"[bold]Total logged:[/bold] {format_duration_hm(total_logged_sessions)}")
         console.print(fb_line)
         console.print(aq_line)
 
     if trend_rows and show_daily_trend:
-        console.print("\n[bold]Daily Trend:[/bold]\n")
-        max_duration = max((r['daily_duration'] or 0) for r in trend_rows)
+        console.print("\n[bold]Daily Trend:[/bold]")
+        console.print(
+            "[dim]  Day (local start) |   Logged | FBS | ATQ | bar (scaled to max day);"
+            " FBS/ATQ vs prior row: green = n/a or same/better, red = worse[/dim]\n"
+        )
+        max_duration = max(int(r["daily_duration"] or 0) for r in trend_rows)
+        by_day = _sessions_by_local_day(list(session_rows), tz) if session_rows else defaultdict(list)
 
-        if max_duration > 0:
-            for r in trend_rows:
-                day = r['day']
-                dur = r['daily_duration'] or 0
-                hm_dur = format_duration_hm(dur)
+        prev_fbs: Optional[float] = None
+        prev_atq: Optional[float] = None
+        for r in trend_rows:
+            day = str(r["day"])
+            dur = int(r["daily_duration"] or 0)
+            hm_dur = format_duration_hm(dur)
+            if max_duration > 0:
                 bar_len = int((dur / max_duration) * 40)
                 bar = "█" * bar_len
-                
-                # normalize the bars to the same length for date and hm_dur
-                console.print(f" {day:<10} | {hm_dur:>8} | [blue]{bar}[/blue]")
-            console.print()
+                bar_part = f" [blue]{bar}[/blue]"
+            else:
+                bar_part = " [dim]—[/dim]"
+
+            day_sessions = by_day.get(day, [])
+            fm_day = summarize_focus_metrics(cast(Sequence[Mapping[str, Any]], day_sessions))
+            fbs = fm_day.focus_block_success_rate
+            atq = fm_day.attention_quality_rate
+            fbs_cell = _rate_value_cell(prev_fbs, fbs)
+            atq_cell = _rate_value_cell(prev_atq, atq)
+            if fbs is not None:
+                prev_fbs = fbs
+            if atq is not None:
+                prev_atq = atq
+
+            console.print(
+                f" {day:<10} | {hm_dur:>8} | FBS {fbs_cell} | ATQ {atq_cell} |{bar_part}"
+            )
+        console.print()

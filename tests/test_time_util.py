@@ -10,6 +10,8 @@ from pomocli.time_util import (
     report_time_bounds,
     report_time_bounds_last_n_calendar_days,
     format_duration_hm,
+    format_duration_hms,
+    local_date_iso_from_stored_utc,
 )
 
 def test_utc_now_sql():
@@ -116,3 +118,17 @@ def test_format_duration_hm():
     assert format_duration_hm(60) == "1m"
     assert format_duration_hm(1500) == "25m"
     assert format_duration_hm(3900) == "1h 5m"
+
+
+def test_local_date_iso_from_stored_utc():
+    tz = zoneinfo.ZoneInfo("UTC")
+    assert local_date_iso_from_stored_utc("2025-06-01 23:00:00", tz) == "2025-06-01"
+    tz_b = zoneinfo.ZoneInfo("Europe/Berlin")
+    assert local_date_iso_from_stored_utc("2025-06-01 22:00:00", tz_b) == "2025-06-02"
+
+
+def test_format_duration_hms():
+    assert format_duration_hms(0) == "0s"
+    assert format_duration_hms(45) == "45s"
+    assert format_duration_hms(90) == "1m 30s"
+    assert format_duration_hms(3665) == "1h 1m 5s"

@@ -15,6 +15,18 @@ def format_duration_hm(total_seconds: int) -> str:
     else:
         return f"{minutes}m"
 
+
+def format_duration_hms(total_seconds: int) -> str:
+    """Format seconds including seconds (for deltas and precise spans)."""
+    s = max(0, int(total_seconds))
+    hours, rem = divmod(s, 3600)
+    minutes, sec = divmod(rem, 60)
+    if hours > 0:
+        return f"{hours}h {minutes}m {sec}s"
+    if minutes > 0:
+        return f"{minutes}m {sec}s"
+    return f"{sec}s"
+
 def utc_now_sql() -> str:
     """Return the current UTC time formatted for SQLite."""
     return datetime.now(timezone.utc).strftime(SQLITE_DATETIME_FORMAT)
@@ -34,6 +46,17 @@ def parse_stored_utc(naive_sql_str: str) -> datetime:
     """Parse a naive SQLite datetime string and attach UTC timezone."""
     dt = datetime.strptime(naive_sql_str, SQLITE_DATETIME_FORMAT)
     return dt.replace(tzinfo=timezone.utc)
+
+def local_date_iso_from_stored_utc(naive_sql_str: str, tz: tzinfo) -> str:
+    """
+    Local calendar date ``YYYY-MM-DD`` for a UTC-stored SQLite datetime string.
+
+    Used for report/day bucketing: a session is attributed entirely to the **local
+    calendar day of its start** (``start_time``), even when ``end_time`` falls on
+    the next local day (e.g. 10 Mar 23:45 → 11 Mar 01:00 counts only toward 10 Mar).
+    """
+    return parse_stored_utc(naive_sql_str).astimezone(tz).date().isoformat()
+
 
 def format_local(dt_utc_naive_or_aware: datetime | str, timezone_config: str) -> str:
     """Format a UTC datetime (or string) to local time string."""

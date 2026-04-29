@@ -66,7 +66,7 @@ Stopwatch sessions still support pause, resume, idle auto-pause, and `stop` / `k
 - **Git:** Current repo and branch are saved with each session when you are inside a git working tree. Override with `--repo` and/or `--branch` on `pomo start` (e.g. when the session is not tied to your cwd).
 - **Config:** `pomo config` edits defaults; settings live in `~/.config/pomocli/config.toml`.
 - **Interactive cancel:** Use `Ctrl-C` to cleanly exit interactive picker/start/config flows.
-- **Reports:** `pomo report today` (or `week`, `month`, `quarter`, `all`) uses your configured **timezone** for “today” and calendar periods (see [Configuration](#configuration)). Session detail footers include **focus block success** (≥25m qualifying sessions, pauses and distractions) and **attention quality** (wall time vs pauses and capped distraction recovery).
+- **Reports:** `pomo report today` (or `week`, `month`, `quarter`, `all`) uses your configured **timezone** for “today” and calendar periods (see [Configuration](#configuration)). Session detail footers include **focus block success** (≥25m qualifying sessions, pauses and distractions) and **attention quality** (wall time vs pauses and capped distraction recovery). On multi-day ranges, the **Daily Trend** block lists each local **start** calendar day with logged duration, fixed-width **FBS** and **ATQ** (green vs red compared to the previous listed day), then an ASCII bar scaled to the busiest day. Overnight sessions count only on the day they **started** (local).
 
 ## Commands
 
@@ -84,7 +84,7 @@ Stopwatch sessions still support pause, resume, idle auto-pause, and `stop` / `k
 | `pomo status` | `stt` | Show timer status |
 | `pomo session list` | `ssn list` | List sessions (default: **today**); add `--days N` / `-d N` (N ≥ 2) for the last **N** local calendar days including today |
 | `pomo session <subcommand>` | `ssn <subcommand>` | Manage past sessions (`list`, `edit`, `cancel`, `delete`). You cannot edit, cancel, or delete the **active** timer session until it is stopped or completed. |
-| `pomo report [PERIOD]` | | Summary + session detail report: `today`, `week`, `month`, `quarter`, or `all`. Optional `--days N` / `-d N` (N ≥ 2) uses the last **N** local calendar days and **overrides** the period |
+| `pomo report [PERIOD]` | | Summary + session detail + focus metrics; multi-day runs add **Daily Trend** (date, logged time, FBS/ATQ columns, bar). Periods: `today`, `week`, `month`, `quarter`, or `all`. Optional `--days N` / `-d N` (N ≥ 2) uses the last **N** local calendar days and **overrides** the period |
 | `pomo backup` | | Create a manual database backup |
 | `pomo dash` | | Live TUI dashboard (`--detail minimal`, `normal`, or `full`) |
 | `pomo logo` | | Print the CLI logo |

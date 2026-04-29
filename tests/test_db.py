@@ -11,6 +11,9 @@ from pomocli.db.operations import (
     log_session_event,
     get_session_events,
     get_sessions_in_range,
+    get_recent_sessions,
+    get_session_listing_row,
+    get_session_distractions,
     log_distraction,
     update_session,
     format_session_public_id,
@@ -108,6 +111,34 @@ def test_resolve_session_identifier_short_and_pk(mocker, tmp_path):
     assert resolve_session_identifier(public_id) == session_id
     assert resolve_session_identifier(str(session_id)) == session_id
     assert resolve_session_identifier("not-an-id") is None
+
+
+def test_get_recent_sessions_and_listing_row_and_distractions(mocker, tmp_path):
+    db_path = tmp_path / "test.db"
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    init_db()
+
+    task_id = get_or_create_task("Inspect task", "Proj")
+    s1 = create_session(task_id)
+    s2 = create_session(task_id)
+    log_distraction(s2, "ping")
+    update_session(s1, "completed", 60 * 25, end_time=True)
+    update_session(s2, "completed", 60 * 5, end_time=True)
+
+    recent = get_recent_sessions(2)
+    assert len(recent) == 2
+    assert {int(r["id"]) for r in recent} == {s1, s2}
+    s2_row = next(r for r in recent if int(r["id"]) == s2)
+    assert int(s2_row["distraction_count"]) == 1
+
+    row = get_session_listing_row(s2)
+    assert row is not None
+    assert row["task_name"] == "Inspect task"
+    assert "ping" in (row["distraction_notes"] or "")
+
+    drows = get_session_distractions(s2)
+    assert len(drows) == 1
+    assert "ping" in (drows[0]["description"] or "")
 
 
 def test_delete_session_cascade_removes_related_rows(mocker, tmp_path):

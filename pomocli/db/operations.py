@@ -278,6 +278,102 @@ def get_distraction_timestamps_for_session(session_id: int) -> List[str]:
     return rows
 
 
+def get_recent_sessions(limit: int) -> List[sqlite3.Row]:
+    """
+    Last ``limit`` sessions by ``start_time`` descending, with task and distraction
+    aggregates (same shape as ``get_sessions_in_range`` rows, plus ``timer_mode``).
+    """
+    if limit < 1:
+        return []
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT
+            s.id,
+            SUBSTR(s.start_time, 3, 2) || printf('%04d', s.id) AS public_id,
+            s.start_time,
+            s.end_time,
+            s.duration_logged,
+            s.status,
+            s.timer_mode,
+            t.task_name,
+            t.project_name,
+            COUNT(d.id) AS distraction_count,
+            GROUP_CONCAT(
+                CASE
+                    WHEN d.description IS NOT NULL AND TRIM(d.description) != '' THEN d.description
+                END,
+                ' | '
+            ) AS distraction_notes
+        FROM sessions s
+        LEFT JOIN tasks t ON s.task_id = t.id
+        LEFT JOIN distractions d ON d.session_id = s.id
+        GROUP BY s.id
+        ORDER BY s.start_time DESC
+        LIMIT ?
+        """,
+        (limit,),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+def get_session_listing_row(session_id: int) -> Optional[sqlite3.Row]:
+    """One session with task and distraction aggregates (same columns as ``get_recent_sessions``)."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT
+            s.id,
+            SUBSTR(s.start_time, 3, 2) || printf('%04d', s.id) AS public_id,
+            s.start_time,
+            s.end_time,
+            s.duration_logged,
+            s.status,
+            s.timer_mode,
+            t.task_name,
+            t.project_name,
+            COUNT(d.id) AS distraction_count,
+            GROUP_CONCAT(
+                CASE
+                    WHEN d.description IS NOT NULL AND TRIM(d.description) != '' THEN d.description
+                END,
+                ' | '
+            ) AS distraction_notes
+        FROM sessions s
+        LEFT JOIN tasks t ON s.task_id = t.id
+        LEFT JOIN distractions d ON d.session_id = s.id
+        WHERE s.id = ?
+        GROUP BY s.id
+        """,
+        (session_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return row
+
+
+def get_session_distractions(session_id: int) -> List[sqlite3.Row]:
+    """Distraction rows for a session, oldest first."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id, timestamp, description
+        FROM distractions
+        WHERE session_id = ?
+        ORDER BY timestamp ASC, id ASC
+        """,
+        (session_id,),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
 def get_session_by_id(session_id: int) -> Optional[sqlite3.Row]:
     """Fetch a single session row by its primary key."""
     conn = get_connection()

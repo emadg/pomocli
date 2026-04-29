@@ -20,6 +20,7 @@ from ..db.operations import (
     task_name_exists,
     project_name_exists,
     get_sessions_in_range,
+    get_recent_sessions,
     resolve_session_identifier,
     get_session_by_id,
     format_session_public_id,
@@ -38,6 +39,7 @@ from ..time_util import (
     format_local,
     format_duration_hm,
 )
+from .session_inspect import run_session_inspect
 from ..metrics.focus import summarize_focus_metrics
 from .. import __build__
 
@@ -149,7 +151,7 @@ app = typer.Typer(
 )
 session_app = typer.Typer(
     help=(
-        "List, edit, cancel, or delete saved sessions. Refuses the live timer session; "
+        "List, inspect, edit, cancel, or delete saved sessions. Refuses the live timer session; "
         "session edit with no --status/--duration runs interactively in a TTY."
     ),
 )
@@ -1132,7 +1134,7 @@ def report(
         help="Last N local calendar days (N >= 2), inclusive of today; overrides period",
     ),
 ):
-    """Show a summary report of logged time and session-detail focus metrics."""
+    """Show a summary report: time by task, session rows, focus metrics, and multi-day daily trend (logged time, fixed-width FBS/ATQ, then bar)."""
     cfg = load_config()
     if days is not None and days < 2:
         console.print(
@@ -1155,7 +1157,7 @@ def list_cmd(
         help="Last N local calendar days (N >= 2), inclusive of today; default is today only",
     ),
 ):
-    """List sessions with status, focus rate, block/attention metrics, and notes."""
+    """List sessions with status, block/attention metrics, distraction notes, and totals."""
     cfg = load_config()
     timezone_config = cfg.get("timezone", "auto")
     tz = get_display_tz(timezone_config)
@@ -1191,13 +1193,10 @@ def list_cmd(
     table.add_column("Distract", justify="right", style="yellow")
     table.add_column("Notes", style="white")
 
-    completed = 0
     total_logged = 0
     for row in rows:
         logged = int(row["duration_logged"] or 0)
         total_logged += logged
-        if row["status"] == "completed":
-            completed += 1
         start_local = format_local(row["start_time"], timezone_config)
         notes = row["distraction_notes"] or "-"
         project = row["project_name"] or "-"
@@ -1216,7 +1215,6 @@ def list_cmd(
         )
 
     console.print(table)
-    focus_rate = (completed / len(rows)) * 100
     fm = summarize_focus_metrics(rows)
     fb_line = (
         f"[bold]Focus block success:[/bold] {fm.focus_block_success_rate:.2f} "
@@ -1231,12 +1229,55 @@ def list_cmd(
         if fm.attention_quality_rate is not None
         else "[bold]Attention quality:[/bold] n/a"
     )
-    console.print(
-        f"[bold]Focus rate:[/bold] {focus_rate:.0f}% ({completed}/{len(rows)} completed) | "
-        f"[bold]Total logged:[/bold] {format_duration_hm(total_logged)}"
-    )
+    console.print(f"[bold]Total logged:[/bold] {format_duration_hm(total_logged)}")
     console.print(fb_line)
     console.print(aq_line)
+
+
+@session_app.command("inspect")
+def session_inspect_cmd(
+    id_opt: Optional[str] = typer.Option(
+        None,
+        "--id",
+        help="Session primary key or short public id (YYxxxx). Mutually exclusive with -n/--num.",
+    ),
+    num: Optional[int] = typer.Option(
+        None,
+        "--num",
+        "-n",
+        help="Inspect the last N sessions by start time. Mutually exclusive with --id.",
+    ),
+):
+    """Show event timeline, wall clock span, logged focus, and attention-quality breakdown."""
+    if (id_opt is None) == (num is None):
+        console.print(
+            "[bold red]Specify exactly one of --id or -n/--num (not both, not neither).[/bold red]"
+        )
+        raise typer.Exit(1)
+    cfg = load_config()
+    timezone_config = cfg.get("timezone", "auto")
+
+    if id_opt is not None:
+        token = id_opt.strip()
+        if not token:
+            console.print("[bold red]--id must not be empty.[/bold red]")
+            raise typer.Exit(1)
+        pk = resolve_session_identifier(token)
+        if pk is None:
+            console.print(f"[bold red]Unknown session id: {token!r}[/bold red]")
+            raise typer.Exit(1)
+        run_session_inspect([pk], timezone_config, console)
+        return
+
+    assert num is not None
+    if num < 1:
+        console.print("[bold red]-n/--num must be at least 1.[/bold red]")
+        raise typer.Exit(1)
+    rows = get_recent_sessions(num)
+    if not rows:
+        console.print("No sessions in the database.")
+        return
+    run_session_inspect([int(r["id"]) for r in rows], timezone_config, console)
 
 
 @app.command()

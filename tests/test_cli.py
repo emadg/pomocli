@@ -184,8 +184,8 @@ def test_cli_list_command(mocker):
     result = runner.invoke(app, ["session", "list"])
     assert result.exit_code == 0
     assert "Today's Sessions" in result.stdout
-    assert "Focus rate:" in result.stdout
-    assert "50% (1/2 completed)" in result.stdout
+    assert "Focus rate:" not in result.stdout
+    assert "Total logged:" in result.stdout
     assert "260007" in result.stdout
 
 
@@ -346,3 +346,50 @@ def test_session_edit_blocked_when_db_session_open_without_daemon(mocker):
     assert result.exit_code == 1
     assert "still active" in result.stdout
     edited.assert_not_called()
+
+
+def test_session_inspect_requires_exactly_one_selector():
+    r0 = runner.invoke(app, ["session", "inspect"])
+    assert r0.exit_code == 1
+    assert "exactly one" in r0.stdout
+
+    r1 = runner.invoke(app, ["session", "inspect", "--id", "1", "-n", "2"])
+    assert r1.exit_code == 1
+    assert "exactly one" in r1.stdout
+
+
+def test_session_inspect_by_id_happy_path(mocker, tmp_path):
+    mocker.patch("pomocli.db.connection.DB_PATH", tmp_path / "t.db")
+    from pomocli.db.connection import init_db
+    from pomocli.db.operations import create_session, get_or_create_task, log_session_event, update_session
+
+    init_db()
+    tid = get_or_create_task("T")
+    sid = create_session(tid)
+    log_session_event(sid, "start", {"duration_minutes": 25})
+    log_session_event(sid, "pause", {"source": "manual"})
+    log_session_event(sid, "resume")
+    update_session(sid, "completed", 1500, end_time=True)
+
+    result = runner.invoke(app, ["session", "inspect", "--id", str(sid)])
+    assert result.exit_code == 0
+    assert "Session events" in result.stdout
+    assert "pause" in result.stdout
+    assert "Attention quality" in result.stdout
+    assert "duration_logged" in result.stdout or "25m" in result.stdout
+
+
+def test_session_inspect_by_num_empty_db(mocker, tmp_path):
+    mocker.patch("pomocli.db.connection.DB_PATH", tmp_path / "empty.db")
+    from pomocli.db.connection import init_db
+
+    init_db()
+    result = runner.invoke(app, ["session", "inspect", "-n", "3"])
+    assert result.exit_code == 0
+    assert "No sessions" in result.stdout
+
+
+def test_session_inspect_num_below_one():
+    result = runner.invoke(app, ["session", "inspect", "-n", "0"])
+    assert result.exit_code == 1
+    assert "at least 1" in result.stdout
