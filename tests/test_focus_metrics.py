@@ -1,5 +1,7 @@
 """Tests for pomocli.metrics.focus."""
 
+import sqlite3
+
 from pomocli.metrics.focus import (
     attention_quality_effective_seconds,
     focus_block_session_score,
@@ -15,6 +17,21 @@ def test_pause_seconds_paired():
         {"event_type": "resume", "timestamp": "2025-01-15 13:45:00", "id": 3},
     ]
     assert pause_seconds_from_events(events, "2025-01-15 14:00:00") == 15 * 60
+
+
+def test_pause_seconds_accepts_sqlite_row_like_db():
+    """Regression: get_session_events returns sqlite3.Row objects."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE e (id INT, event_type TEXT, timestamp TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO e VALUES (1, 'pause', '2025-01-15 13:30:00'), (2, 'resume', '2025-01-15 13:45:00')"
+    )
+    rows = conn.execute("SELECT * FROM e ORDER BY id").fetchall()
+    assert pause_seconds_from_events(rows, "2025-01-15 14:00:00") == 15 * 60
+    conn.close()
 
 
 def test_pause_seconds_open_at_end():

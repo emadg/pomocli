@@ -20,6 +20,13 @@ DISTRACTION_RECOVERY_CAP_SECONDS = 10 * 60
 QUALIFYING_SESSION_MIN_SECONDS = 25 * 60
 
 
+def _as_mapping(row: Mapping[str, Any]) -> Mapping[str, Any]:
+    """sqlite3.Row is not a dict and lacks .get(); use a plain mapping for metrics."""
+    if isinstance(row, dict):
+        return row
+    return dict(row)
+
+
 def pause_seconds_from_events(
     events: Iterable[Mapping[str, Any]],
     session_end_sql: str,
@@ -34,7 +41,12 @@ def pause_seconds_from_events(
     total = 0
     pause_start: Optional[datetime] = None
 
-    for ev in sorted(events, key=lambda r: (str(r["timestamp"]), r.get("id", 0))):
+    # sqlite3.Row has no .get(); normalize for sort and iteration.
+    rows = [_as_mapping(e) for e in events]
+    for ev in sorted(
+        rows,
+        key=lambda r: (str(r["timestamp"]), int(r.get("id") or 0)),
+    ):
         et = str(ev["event_type"])
         ts = parse_stored_utc(str(ev["timestamp"]))
         if et == "pause":
@@ -157,12 +169,6 @@ class FocusMetricsSummary:
     attention_quality_rate: Optional[float]
     attention_quality_numerator_seconds: int
     attention_quality_denominator_seconds: int
-
-
-def _as_mapping(row: Mapping[str, Any]) -> Mapping[str, Any]:
-    if isinstance(row, dict):
-        return row
-    return dict(row)
 
 
 def summarize_focus_metrics(session_rows: Sequence[Mapping[str, Any]]) -> FocusMetricsSummary:
