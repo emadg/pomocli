@@ -199,7 +199,7 @@ uv run pytest
 
 ### Demo / test database
 
-`scripts/seed_test_db.py` fills a database with varied tasks, sessions (completed, stopped, killed), tags, distractions, and git fields—useful for reports and the dashboard.
+`scripts/seed_test_db.py` fills a database with varied tasks, sessions (**countdown** and **elapsed**), `session_events` (start/pause/resume/complete/stop), tags, distractions—including **curated rows** tagged `demo-metrics` that exercise **focus block** and **attention quality** math—plus git fields. Use it for reports, `pomo session list`, and the dashboard.
 
 **Always set `POMOCLI_DB_PATH`** so you do not overwrite your real database:
 

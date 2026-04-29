@@ -206,7 +206,12 @@ def test_cli_session_edit(mocker):
     mocker.patch("pomocli.cli.main.resolve_session_identifier", return_value=7)
     mocker.patch(
         "pomocli.cli.main.get_session_by_id",
-        return_value={"start_time": "2026-01-01 08:00:00"},
+        return_value={
+            "start_time": "2026-01-01 08:00:00",
+            "end_time": "2026-01-01 08:25:00",
+            "status": "stopped",
+            "duration_logged": 900,
+        },
     )
     mocker.patch("pomocli.cli.main.format_session_public_id", return_value="260007")
     edited = mocker.patch("pomocli.cli.main.edit_session", return_value=True)
@@ -221,7 +226,11 @@ def test_cli_session_cancel(mocker):
     mocker.patch("pomocli.cli.main.resolve_session_identifier", return_value=7)
     mocker.patch(
         "pomocli.cli.main.get_session_by_id",
-        return_value={"start_time": "2026-01-01 08:00:00"},
+        return_value={
+            "start_time": "2026-01-01 08:00:00",
+            "end_time": "2026-01-01 08:25:00",
+            "status": "completed",
+        },
     )
     mocker.patch("pomocli.cli.main.format_session_public_id", return_value="260007")
     cancelled = mocker.patch("pomocli.cli.main.cancel_session", return_value=True)
@@ -236,7 +245,11 @@ def test_cli_session_delete_yes(mocker):
     mocker.patch("pomocli.cli.main.resolve_session_identifier", return_value=7)
     mocker.patch(
         "pomocli.cli.main.get_session_by_id",
-        return_value={"start_time": "2026-01-01 08:00:00"},
+        return_value={
+            "start_time": "2026-01-01 08:00:00",
+            "end_time": "2026-01-01 08:30:00",
+            "status": "completed",
+        },
     )
     mocker.patch("pomocli.cli.main.format_session_public_id", return_value="260007")
     deleted = mocker.patch("pomocli.cli.main.delete_session_cascade", return_value=True)
@@ -245,3 +258,46 @@ def test_cli_session_delete_yes(mocker):
     assert result.exit_code == 0
     deleted.assert_called_once_with(7)
     assert "Deleted session 260007" in result.stdout
+
+
+def _inactive_session_row():
+    return {
+        "start_time": "2026-01-01 08:00:00",
+        "end_time": "2026-01-01 08:30:00",
+        "status": "completed",
+    }
+
+
+def test_session_edit_blocked_when_daemon_holds_session(mocker):
+    mocker.patch("pomocli.cli.main.resolve_session_identifier", return_value=42)
+    mocker.patch("pomocli.cli.main.is_daemon_running", return_value=True)
+    mocker.patch(
+        "pomocli.cli.main.client.status",
+        return_value={"status": "ok", "data": {"session_id": 42}},
+    )
+    mocker.patch("pomocli.cli.main.get_session_by_id", return_value=_inactive_session_row())
+    edited = mocker.patch("pomocli.cli.main.edit_session")
+
+    result = runner.invoke(app, ["session", "edit", "260042", "--status", "stopped"])
+    assert result.exit_code == 1
+    assert "still active" in result.stdout
+    edited.assert_not_called()
+
+
+def test_session_edit_blocked_when_db_session_open_without_daemon(mocker):
+    mocker.patch("pomocli.cli.main.resolve_session_identifier", return_value=99)
+    mocker.patch("pomocli.cli.main.is_daemon_running", return_value=False)
+    mocker.patch(
+        "pomocli.cli.main.get_session_by_id",
+        return_value={
+            "start_time": "2026-01-01 08:00:00",
+            "end_time": None,
+            "status": "running",
+        },
+    )
+    edited = mocker.patch("pomocli.cli.main.edit_session")
+
+    result = runner.invoke(app, ["session", "edit", "260099", "-d", "10"])
+    assert result.exit_code == 1
+    assert "still active" in result.stdout
+    edited.assert_not_called()
