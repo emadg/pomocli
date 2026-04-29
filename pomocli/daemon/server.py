@@ -152,6 +152,35 @@ class DaemonServer:
                         self.timer.session_id, "killed", logged, end_time=True
                     )
                 self.timer.stop()
+            elif command == "complete":
+                if self.timer.mode != TimerMode.ELAPSED:
+                    response = {
+                        "status": "error",
+                        "message": "Complete is only for stopwatch (elapsed) sessions",
+                    }
+                elif self.timer.state not in (
+                    TimerState.RUNNING,
+                    TimerState.PAUSED,
+                ):
+                    response = {
+                        "status": "error",
+                        "message": "No active stopwatch session",
+                    }
+                elif not self.timer.session_id:
+                    response = {
+                        "status": "error",
+                        "message": "No active session",
+                    }
+                else:
+                    log_session_event(self.timer.session_id, "complete")
+                    update_session(
+                        self.timer.session_id,
+                        "completed",
+                        self.timer.logged_focus_seconds(),
+                        end_time=True,
+                    )
+                    play_sound("complete")
+                    self.timer.stop()
             elif command == "distract":
                 desc = args.get("description")
                 if self.timer.session_id and self.timer.state == TimerState.RUNNING:

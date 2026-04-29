@@ -130,6 +130,7 @@ def test_start_elapsed_invokes_start_elapsed(mocker):
 def test_stop_elapsed_uses_logged_seconds(mocker):
     server = DaemonServer()
     mocker.patch("pomocli.daemon.server.play_sound")
+    mocker.patch("pomocli.daemon.server.log_session_event")
     update = mocker.patch("pomocli.daemon.server.update_session")
     logged = mocker.patch.object(
         server.timer, "logged_focus_seconds", return_value=333
@@ -142,3 +143,62 @@ def test_stop_elapsed_uses_logged_seconds(mocker):
     _send(server, "stop")
     logged.assert_called_once()
     update.assert_called_once_with(5, "stopped", 333, end_time=True)
+
+
+def test_complete_elapsed_marks_completed(mocker):
+    server = DaemonServer()
+    mocker.patch("pomocli.daemon.server.play_sound")
+    log_event = mocker.patch("pomocli.daemon.server.log_session_event")
+    update = mocker.patch("pomocli.daemon.server.update_session")
+    mocker.patch.object(server.timer, "stop")
+    logged = mocker.patch.object(
+        server.timer, "logged_focus_seconds", return_value=1200
+    )
+
+    server.timer.session_id = 8
+    server.timer.state = TimerState.RUNNING
+    server.timer.mode = TimerMode.ELAPSED
+    response = _send(server, "complete")
+    assert response["status"] == "ok"
+    logged.assert_called_once()
+    log_event.assert_called_once_with(8, "complete")
+    update.assert_called_once_with(8, "completed", 1200, end_time=True)
+
+
+def test_complete_elapsed_when_paused(mocker):
+    server = DaemonServer()
+    mocker.patch("pomocli.daemon.server.play_sound")
+    mocker.patch("pomocli.daemon.server.log_session_event")
+    mocker.patch("pomocli.daemon.server.update_session")
+    mocker.patch.object(server.timer, "stop")
+    mocker.patch.object(server.timer, "logged_focus_seconds", return_value=60)
+
+    server.timer.session_id = 8
+    server.timer.state = TimerState.PAUSED
+    server.timer.mode = TimerMode.ELAPSED
+    response = _send(server, "complete")
+    assert response["status"] == "ok"
+
+
+def test_complete_countdown_returns_error(mocker):
+    server = DaemonServer()
+    mocker.patch("pomocli.daemon.server.play_sound")
+    update = mocker.patch("pomocli.daemon.server.update_session")
+    mocker.patch.object(server.timer, "stop")
+
+    server.timer.session_id = 3
+    server.timer.state = TimerState.RUNNING
+    server.timer.mode = TimerMode.COUNTDOWN
+    response = _send(server, "complete")
+    assert response["status"] == "error"
+    assert "elapsed" in response["message"].lower()
+    update.assert_not_called()
+
+
+def test_complete_no_active_session(mocker):
+    server = DaemonServer()
+    server.timer.session_id = None
+    server.timer.state = TimerState.STOPPED
+    server.timer.mode = TimerMode.ELAPSED
+    response = _send(server, "complete")
+    assert response["status"] == "error"

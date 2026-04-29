@@ -73,6 +73,10 @@ class DaemonClient:
     def stop(self):
         return self._send_command("stop")
 
+    def complete(self):
+        """Mark the current elapsed (stopwatch) session as completed."""
+        return self._send_command("complete")
+
     def kill(self):
         return self._send_command("kill")
 
