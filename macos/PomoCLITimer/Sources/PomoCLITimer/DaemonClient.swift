@@ -43,6 +43,11 @@ final class DaemonClient {
         sendCommand("stop", completion: completion)
     }
 
+    /// Marks the current stopwatch (elapsed) session as completed in the database.
+    func completeSession(completion: @escaping (DaemonResponse?) -> Void) {
+        sendCommand("complete", completion: completion)
+    }
+
     func distract(description: String? = nil, completion: @escaping (DaemonResponse?) -> Void) {
         var args: [String: Any] = [:]
         if let desc = description {

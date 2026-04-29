@@ -4,7 +4,9 @@ final class StatusBarController {
     private let statusItem: NSStatusItem
     private let pauseResumeItem: NSMenuItem
     private let stopItem: NSMenuItem
+    private let completeItem: NSMenuItem
     private var currentState: String = "stopped"
+    private var currentTimerMode: String = "countdown"
     private let client: DaemonClient
 
     private static let statusIconHeight: CGFloat = 18
@@ -62,10 +64,12 @@ final class StatusBarController {
 
         pauseResumeItem = NSMenuItem(title: "Pause", action: nil, keyEquivalent: "")
         stopItem = NSMenuItem(title: "Stop", action: nil, keyEquivalent: "")
+        completeItem = NSMenuItem(title: "Complete session", action: nil, keyEquivalent: "")
 
         let menu = NSMenu()
         menu.addItem(pauseResumeItem)
         menu.addItem(stopItem)
+        menu.addItem(completeItem)
         menu.addItem(NSMenuItem.separator())
         let versionItem = NSMenuItem(title: "PomoCLI Timer \(appBuild)", action: nil, keyEquivalent: "")
         versionItem.isEnabled = false
@@ -78,13 +82,16 @@ final class StatusBarController {
         pauseResumeItem.action = #selector(togglePauseResume)
         stopItem.target = self
         stopItem.action = #selector(stopSession)
+        completeItem.target = self
+        completeItem.action = #selector(completeSession)
 
         updateMenuState()
     }
 
     func update(state: String, timeLeft: Int, timerMode: String? = nil, elapsedSeconds: Int? = nil) {
         currentState = state
-        let isElapsed = (timerMode ?? "countdown") == "elapsed"
+        currentTimerMode = timerMode ?? "countdown"
+        let isElapsed = currentTimerMode == "elapsed"
         let displaySeconds = isElapsed ? (elapsedSeconds ?? 0) : timeLeft
         let mins = displaySeconds / 60
         let secs = displaySeconds % 60
@@ -120,6 +127,11 @@ final class StatusBarController {
     }
 
     private func updateMenuState() {
+        let isElapsed = currentTimerMode == "elapsed"
+        let active = currentState == "running" || currentState == "paused"
+        completeItem.isHidden = !isElapsed
+        completeItem.isEnabled = isElapsed && active
+
         switch currentState {
         case "running":
             pauseResumeItem.title = "Pause"
@@ -146,6 +158,10 @@ final class StatusBarController {
 
     @objc private func stopSession() {
         client.stop { _ in }
+    }
+
+    @objc private func completeSession() {
+        client.completeSession { _ in }
     }
 
     /// Briefly flash the status bar to indicate a distraction was logged.
