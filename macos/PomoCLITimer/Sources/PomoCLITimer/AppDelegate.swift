@@ -3,6 +3,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBar: StatusBarController!
     private let client = DaemonClient()
+    private var distractionFeedback: DistractionFeedbackController?
     private var hotkeyManager: GlobalHotkeyManager?
     private var idleMonitor: IdleMonitor?
     private var pollTimer: Timer?
@@ -12,20 +13,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSLog("[PomoCLI Timer] Starting build %@", appBuild)
         statusBar = StatusBarController(client: client)
+        distractionFeedback = DistractionFeedbackController(
+            client: client,
+            statusBar: statusBar,
+            notePrompt: config.distractionNotePrompt
+        )
 
-        // Set up global hotkey for distractions
+        // Set up global hotkey for distractions (2s flash + cooldown on success; optional note alert)
         hotkeyManager = GlobalHotkeyManager(hotkeyString: config.hotkeyDistraction) { [weak self] in
-            self?.client.distract { response in
-                DispatchQueue.main.async {
-                    if response?.status == "ok" {
-                        NSLog("[PomoCLI Timer] Distraction logged successfully")
-                        self?.statusBar.flashDistraction()
-                        NSSound(named: "Basso")?.play()
-                    } else {
-                        NSLog("[PomoCLI Timer] Distraction failed: \(response?.message ?? "no active session")")
-                    }
-                }
-            }
+            self?.distractionFeedback?.handleDistractionHotkey()
         }
         hotkeyManager?.register()
 

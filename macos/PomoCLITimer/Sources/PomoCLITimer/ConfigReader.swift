@@ -5,6 +5,8 @@ struct PomoConfig {
     var soundEnabled: Bool = true
     var hotkeyDistraction: String = "cmd+shift+d"
     var distractionExtendMinutes: Int = 2
+    /// When true, macOS menu bar app shows a note field before logging a distraction hotkey.
+    var distractionNotePrompt: Bool = false
 
     static func load() -> PomoConfig {
         var config = PomoConfig()
@@ -39,6 +41,8 @@ struct PomoConfig {
                 config.hotkeyDistraction = value
             case "distraction_extend_minutes":
                 config.distractionExtendMinutes = Int(value) ?? config.distractionExtendMinutes
+            case "distraction_note_prompt":
+                config.distractionNotePrompt = (value == "true" || value == "1")
             default:
                 break
             }

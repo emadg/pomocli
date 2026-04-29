@@ -165,12 +165,12 @@ final class StatusBarController {
     }
 
     /// Briefly flash the status bar to indicate a distraction was logged.
-    func flashDistraction() {
+    func flashDistraction(duration: TimeInterval = 2.0) {
         let savedImage = statusItem.button?.image
         let savedTitle = statusItem.button?.title ?? ""
         statusItem.button?.image = Self.templateSymbol("bolt.fill") ?? Self.emojiImage("⚡")
         statusItem.button?.title = " distraction"
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
             self?.statusItem.button?.image = savedImage
             self?.statusItem.button?.title = savedTitle
         }

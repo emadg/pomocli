@@ -131,6 +131,7 @@ Run `pomo config` interactively, or edit `~/.config/pomocli/config.toml`.
 | `sound_enabled` | true | Sound notifications |
 | `history_retention_days` | 30 | How far back recent tasks/projects are shown in interactive start |
 | `hotkey_distraction` | `cmd+shift+d` | Global distraction hotkey (macOS app) |
+| `distraction_note_prompt` | `false` | macOS app only: show a dialog to enter an optional distraction note before logging (Cancel/Esc skips). Unrelated: the app always uses a **2s** bolt flash and **2s** cooldown after each successful hotkey distraction (not configurable). |
 | `distraction_extend_minutes` | 2 | Minutes added per distraction (`0` to disable) |
 | `timezone` | `auto` | Display and calendar semantics for reports and retention: `auto` uses system local time, or set an IANA name (e.g. `Europe/Berlin`) |
 | `backup_interval_days` | 0 | Minimum days between automatic backups (`0` to disable) |
@@ -185,7 +186,7 @@ After install, `pomo start` can auto-launch the app; you can also open it manual
 
 - **Menu bar** — idle `🍅`; running countdown `🍅 MM:SS` (time remaining); running stopwatch `🍅 ⏱ MM:SS` (time elapsed); paused `⏸ MM:SS` (remaining or elapsed to match the session mode)
 - **Menu** — Pause / Resume, Stop, **Complete session** (stopwatch / elapsed only; hidden for countdown), Quit
-- **Global hotkey** — default Cmd+Shift+D (`hotkey_distraction` in config)
+- **Global hotkey** — default Cmd+Shift+D (`hotkey_distraction` in config); after each successful log, a **2s** bolt flash and **2s** lockout before another distraction can be logged. Optional **`distraction_note_prompt`** opens a note dialog first (Cancel skips logging).
 - **Idle detection** — auto-pause when away (Quartz-based)
 
 Global hotkeys and menu-bar integration are provided by the Swift app only; the Python daemon does not register global hotkeys.

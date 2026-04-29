@@ -20,7 +20,7 @@
 - Interactive command picker and interactive start (questionary autocomplete for tasks, projects, tags).
 - Live dashboard (`pomo dash`) with `--detail minimal|normal|full`.
 - Reporting with period summaries, session detail rows, and ASCII **Daily Trend** for multi-day ranges: per local **session start** day, logged duration, fixed-width **FBS** / **ATQ** (color vs previous day), then a bar scaled to the max day (`reports.py`).
-- Distraction logging from CLI and from the macOS app (debounced, Swift-only global hotkey).
+- Distraction logging from CLI and from the macOS app (debounced, Swift-only global hotkey). Menu bar app: **2s** bolt flash and **2s** post-success cooldown after each hotkey distraction (fixed); optional **`distraction_note_prompt`** in `config.toml` opens an `NSAlert` note field first (Cancel/Esc skips logging).
 - Git repo and branch captured on sessions when available.
 - Daemon logging with structured timestamps (UTC in log formatter).
 - Improved logo for macos app and the status bar icon
