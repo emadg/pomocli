@@ -103,6 +103,22 @@ def test_cli_report_quarter(mocker):
     assert result.exit_code == 0
 
 
+def test_cli_report_days_rejects_lt_two(mocker):
+    gen = mocker.patch("pomocli.cli.main.generate_report")
+    result = runner.invoke(app, ["report", "week", "--days", "1"])
+    assert result.exit_code == 1
+    assert "--days" in result.stdout or "2" in result.stdout
+    gen.assert_not_called()
+
+
+def test_cli_report_days_passes_last_n_days(mocker):
+    gen = mocker.patch("pomocli.cli.main.generate_report")
+    result = runner.invoke(app, ["report", "today", "-d", "14"])
+    assert result.exit_code == 0
+    gen.assert_called_once()
+    assert gen.call_args.kwargs.get("last_n_days") == 14
+
+
 def test_complete_tasks_dedupes_and_filters(mocker):
     mocker.patch("pomocli.cli.main.get_recent_tasks", return_value=[
         {"task_name": "Write docs"},
@@ -171,6 +187,35 @@ def test_cli_list_command(mocker):
     assert "Focus rate:" in result.stdout
     assert "50% (1/2 completed)" in result.stdout
     assert "260007" in result.stdout
+
+
+def test_cli_session_list_days(mocker):
+    mocker.patch("pomocli.cli.main.load_config", return_value={"timezone": "auto"})
+    mocker.patch("pomocli.cli.main.get_display_tz", return_value=timezone.utc)
+    bounds = mocker.patch(
+        "pomocli.cli.main.report_time_bounds_last_n_calendar_days",
+        return_value=("2026-01-01 00:00:00", "2026-01-08 00:00:00"),
+    )
+    mocker.patch(
+        "pomocli.cli.main.get_sessions_in_range",
+        return_value=[
+            {
+                "id": 7,
+                "public_id": "260007",
+                "start_time": "2026-01-05 08:00:00",
+                "project_name": "Pomocli",
+                "task_name": "Write docs",
+                "status": "completed",
+                "duration_logged": 1500,
+                "distraction_count": 0,
+                "distraction_notes": None,
+            },
+        ],
+    )
+    result = runner.invoke(app, ["session", "list", "--days", "7"])
+    assert result.exit_code == 0
+    bounds.assert_called_once_with(7, timezone.utc)
+    assert "Sessions (last 7 days)" in result.stdout
 
 
 def test_cli_session_list_shorthand(mocker):

@@ -8,6 +8,7 @@ from pomocli.time_util import (
     format_local,
     retention_cutoff_utc,
     report_time_bounds,
+    report_time_bounds_last_n_calendar_days,
     format_duration_hm,
 )
 
@@ -100,6 +101,14 @@ def test_report_time_bounds(mocker):
     start_a, end_a = report_time_bounds("all", tz)
     assert start_a is None
     assert end_a is None
+
+    # Last 7 local calendar days ending today: Jan 9 00:00 .. Jan 16 00:00 NY
+    start_7, end_7 = report_time_bounds_last_n_calendar_days(7, tz)
+    assert start_7 == "2025-01-09 05:00:00"
+    assert end_7 == "2025-01-16 05:00:00"
+
+    with pytest.raises(ValueError):
+        report_time_bounds_last_n_calendar_days(1, tz)
 
 
 def test_format_duration_hm():

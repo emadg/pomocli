@@ -82,9 +82,9 @@ Stopwatch sessions still support pause, resume, idle auto-pause, and `stop` / `k
 | `pomo distract [DESC]` | `dd` | Log a distraction |
 | `pomo extend` | `ee` | Extend the current session (configured minutes) |
 | `pomo status` | `stt` | Show timer status |
-| `pomo session list` | `ssn list` | List today's sessions with status, focus rate, focus-block / attention-quality metrics, and notes |
+| `pomo session list` | `ssn list` | List sessions (default: **today**); add `--days N` / `-d N` (N ≥ 2) for the last **N** local calendar days including today |
 | `pomo session <subcommand>` | `ssn <subcommand>` | Manage past sessions (`list`, `edit`, `cancel`, `delete`). You cannot edit, cancel, or delete the **active** timer session until it is stopped or completed. |
-| `pomo report [PERIOD]` | | Summary + session detail report: `today`, `week`, `month`, `quarter`, or `all` |
+| `pomo report [PERIOD]` | | Summary + session detail report: `today`, `week`, `month`, `quarter`, or `all`. Optional `--days N` / `-d N` (N ≥ 2) uses the last **N** local calendar days and **overrides** the period |
 | `pomo backup` | | Create a manual database backup |
 | `pomo dash` | | Live TUI dashboard (`--detail minimal`, `normal`, or `full`) |
 | `pomo logo` | | Print the CLI logo |

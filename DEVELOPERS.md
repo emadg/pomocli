@@ -10,7 +10,7 @@
 
 - **Storage**: The SQLite database stores all timestamps as **UTC** strings (`YYYY-MM-DD HH:MM:SS`). Do not use SQLite's `date('now')` or `CURRENT_TIMESTAMP` for queries that depend on the user's local day/week boundaries.
 - **UI / Logic**: Everything the user sees or that is defined in calendar terms (e.g. "today", "this month", "last 30 days") uses the **effective display timezone** from the config (`timezone` setting, defaulting to `auto` for system local).
-- **Conversions**: Always use the helpers in `pomocli/time_util.py` (like `utc_now_sql`, `get_display_tz`, `report_time_bounds`, `format_local`) to convert between UTC and the local display timezone, or to generate UTC bounds for SQL queries.
+- **Conversions**: Always use the helpers in `pomocli/time_util.py` (like `utc_now_sql`, `get_display_tz`, `report_time_bounds`, `report_time_bounds_last_n_calendar_days`, `format_local`) to convert between UTC and the local display timezone, or to generate UTC bounds for SQL queries.
 
 ## Roadmap & Ideas
 

@@ -86,3 +86,23 @@ def report_time_bounds(period: str, tz: tzinfo) -> Tuple[Optional[str], Optional
         
     start_utc = start_local.astimezone(timezone.utc).strftime(SQLITE_DATETIME_FORMAT)
     return start_utc, end_utc
+
+
+def report_time_bounds_last_n_calendar_days(n: int, tz: tzinfo) -> Tuple[str, str]:
+    """
+    UTC bounds (start inclusive, end exclusive) for the last ``n`` local calendar
+    days ending today: from local midnight at (today - (n - 1)) through tomorrow
+    local midnight.
+
+    Requires ``n >= 2`` (use ``report_time_bounds(\"today\", tz)`` for a single day).
+    """
+    if n < 2:
+        raise ValueError("last_n_calendar_days requires n >= 2; use report_time_bounds('today', tz) for one day")
+
+    now_local = datetime.now(tz)
+    local_today_midnight = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_midnight = local_today_midnight + timedelta(days=1)
+    end_utc = tomorrow_midnight.astimezone(timezone.utc).strftime(SQLITE_DATETIME_FORMAT)
+    start_local = local_today_midnight - timedelta(days=n - 1)
+    start_utc = start_local.astimezone(timezone.utc).strftime(SQLITE_DATETIME_FORMAT)
+    return start_utc, end_utc

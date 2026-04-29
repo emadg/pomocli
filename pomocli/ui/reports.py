@@ -1,12 +1,13 @@
 from rich.console import Console
 from rich.table import Table
-from typing import DefaultDict
+from typing import DefaultDict, Optional
 from collections import defaultdict
 from ..db.connection import get_connection
 from ..db.operations import get_sessions_in_range
 from ..metrics.focus import summarize_focus_metrics
 from ..time_util import (
     report_time_bounds,
+    report_time_bounds_last_n_calendar_days,
     get_display_tz,
     parse_stored_utc,
     format_local,
@@ -15,13 +16,25 @@ from ..time_util import (
 
 console = Console()
 
-def generate_report(period: str = "today", *, timezone_config: str = "auto"):
-    """Generate a summary report for the given period."""
+def generate_report(
+    period: str = "today",
+    *,
+    timezone_config: str = "auto",
+    last_n_days: Optional[int] = None,
+):
+    """Generate a summary report for the given period or last N local calendar days."""
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     tz = get_display_tz(timezone_config)
-    start_utc, end_utc = report_time_bounds(period, tz)
+    if last_n_days is not None:
+        start_utc, end_utc = report_time_bounds_last_n_calendar_days(last_n_days, tz)
+        title_scope = f"Last {last_n_days} days"
+        show_daily_trend = last_n_days >= 2
+    else:
+        start_utc, end_utc = report_time_bounds(period, tz)
+        title_scope = period.capitalize()
+        show_daily_trend = period != "today"
     
     params: tuple[str, str] | tuple[()]
     if start_utc and end_utc:
@@ -73,7 +86,7 @@ def generate_report(period: str = "today", *, timezone_config: str = "auto"):
     
     conn.close()
     
-    table = Table(title=f"Pomodoro Report ({period.capitalize()})")
+    table = Table(title=f"Pomodoro Report ({title_scope})")
     
     table.add_column("Project", style="cyan")
     table.add_column("Task", style="magenta")
@@ -98,7 +111,7 @@ def generate_report(period: str = "today", *, timezone_config: str = "auto"):
     console.print(f"\n[bold]Total Time Logged:[/bold] {format_duration_hm(total_time)}")
 
     if session_rows:
-        detail_table = Table(title=f"Session Details ({period.capitalize()})")
+        detail_table = Table(title=f"Session Details ({title_scope})")
         detail_table.add_column("Session", justify="right", style="cyan")
         detail_table.add_column("Start", style="cyan")
         detail_table.add_column("Project", style="magenta")
@@ -153,7 +166,7 @@ def generate_report(period: str = "today", *, timezone_config: str = "auto"):
         console.print(fb_line)
         console.print(aq_line)
 
-    if trend_rows and period != "today":
+    if trend_rows and show_daily_trend:
         console.print("\n[bold]Daily Trend:[/bold]\n")
         max_duration = max((r['daily_duration'] or 0) for r in trend_rows)
 

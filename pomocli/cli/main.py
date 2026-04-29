@@ -31,7 +31,13 @@ from ..db.connection import init_db, DB_PATH
 from ..db.backup import run_db_backup, resolve_backup_dir
 from ..config import load_config, save_config, DEFAULT_CONFIG
 from ..utils.git import get_git_context
-from ..time_util import report_time_bounds, get_display_tz, format_local, format_duration_hm
+from ..time_util import (
+    report_time_bounds,
+    report_time_bounds_last_n_calendar_days,
+    get_display_tz,
+    format_local,
+    format_duration_hm,
+)
 from ..metrics.focus import summarize_focus_metrics
 from .. import __build__
 
@@ -1116,31 +1122,66 @@ def dash(
 @app.command()
 def report(
     period: str = typer.Argument(
-        "today", help="Period to report on (today, week, month, quarter, all)"
+        "today",
+        help="Period (today, week, month, quarter, all); ignored when --days is set",
+    ),
+    days: Optional[int] = typer.Option(
+        None,
+        "--days",
+        "-d",
+        help="Last N local calendar days (N >= 2), inclusive of today; overrides period",
     ),
 ):
     """Show a summary report of logged time and session-detail focus metrics."""
     cfg = load_config()
-    generate_report(period, timezone_config=cfg.get("timezone", "auto"))
+    if days is not None and days < 2:
+        console.print(
+            "[bold red]--days must be an integer >= 2 (omit for preset periods).[/bold red]"
+        )
+        raise typer.Exit(1)
+    generate_report(
+        period,
+        timezone_config=cfg.get("timezone", "auto"),
+        last_n_days=days,
+    )
 
 
 @session_app.command(name="list")
-def list_cmd():
-    """List today's sessions with status, focus rate, block/attention metrics, and notes."""
+def list_cmd(
+    days: Optional[int] = typer.Option(
+        None,
+        "--days",
+        "-d",
+        help="Last N local calendar days (N >= 2), inclusive of today; default is today only",
+    ),
+):
+    """List sessions with status, focus rate, block/attention metrics, and notes."""
     cfg = load_config()
     timezone_config = cfg.get("timezone", "auto")
     tz = get_display_tz(timezone_config)
-    start_utc, end_utc = report_time_bounds("today", tz)
+    if days is not None:
+        if days < 2:
+            console.print(
+                "[bold red]--days must be an integer >= 2 (omit for today only).[/bold red]"
+            )
+            raise typer.Exit(1)
+        start_utc, end_utc = report_time_bounds_last_n_calendar_days(days, tz)
+        table_title = f"Sessions (last {days} days)"
+        empty_msg = f"No sessions logged in the last {days} days."
+    else:
+        start_utc, end_utc = report_time_bounds("today", tz)
+        table_title = "Today's Sessions"
+        empty_msg = "No sessions logged today."
     if not start_utc or not end_utc:
-        console.print("[bold red]Could not resolve time range for today.[/bold red]")
+        console.print("[bold red]Could not resolve time range.[/bold red]")
         raise typer.Exit(1)
 
     rows = get_sessions_in_range(start_utc, end_utc)
     if not rows:
-        console.print("No sessions logged today.")
+        console.print(empty_msg)
         return
 
-    table = Table(title="Today's Sessions")
+    table = Table(title=table_title)
     table.add_column("Session", justify="right", style="cyan")
     table.add_column("Start", style="cyan")
     table.add_column("Project", style="magenta")
