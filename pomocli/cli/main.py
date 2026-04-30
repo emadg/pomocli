@@ -7,6 +7,7 @@ import sys
 import os
 import time
 from functools import lru_cache
+from pathlib import Path
 
 from ..daemon.client import DaemonClient, is_daemon_running
 from ..db.operations import (
@@ -27,6 +28,8 @@ from ..db.operations import (
     edit_session,
     cancel_session,
     delete_session_cascade,
+    update_session,
+    repair_session,
 )
 from ..db.connection import init_db, DB_PATH
 from ..db.backup import run_db_backup, resolve_backup_dir
@@ -350,6 +353,32 @@ def _interactive_start() -> None:
         raise typer.Exit()
 
 
+def _require_daemon_db_matches_cli(status_resp: dict) -> None:
+    """Abort if the daemon uses a different SQLite file than this CLI process."""
+    if status_resp.get("status") != "ok":
+        return
+    data = status_resp.get("data") or {}
+    daemon_path = data.get("db_path")
+    if not daemon_path:
+        return
+    cli_path = str(Path(DB_PATH).resolve())
+    if daemon_path == cli_path:
+        return
+    console.print(
+        "[bold red]Database path mismatch:[/bold red] this CLI is using\n"
+        f"  [cyan]{cli_path}[/cyan]\n"
+        "but the running daemon was started with\n"
+        f"  [cyan]{daemon_path}[/cyan]\n\n"
+        "The CLI creates `sessions` rows here while the daemon logs "
+        "`session_events` and timer updates there, so new work looks broken "
+        "(empty events, stuck running, zero duration until repair).\n\n"
+        "Fix: use the same [bold]POMOCLI_DB_PATH[/bold] for both, stop the old daemon "
+        "(quit the timer app or [bold]pomo stop[/bold] / kill the process), then "
+        "[bold]pomo start[/bold] or [bold]pomo daemon[/bold] so a fresh daemon inherits your env."
+    )
+    raise typer.Exit(1)
+
+
 def _start_session(
     task: str,
     project: str | None,
@@ -373,6 +402,8 @@ def _start_session(
             "[bold red]A session is already running. Stop or kill it first.[/bold red]"
         )
         raise typer.Exit(1)
+
+    _require_daemon_db_matches_cli(status_resp)
 
     task_id = get_or_create_task(task, project, estimate)
     repo_name, branch_name = get_git_context()
@@ -413,6 +444,7 @@ def _start_session(
             parts.append(f"  Tags: {', '.join(tags)}")
         console.print("\n".join(parts))
     else:
+        update_session(session_id, "stopped", 0, end_time=True)
         console.print(
             f"[bold red]Failed to start session: {response.get('message')}[/bold red]"
         )
@@ -583,7 +615,6 @@ def _launch_timer_app():
     """Launch the PomoCLI Timer macOS status bar app if installed."""
     if sys.platform != "darwin":
         return
-    from pathlib import Path
 
     timer_app_paths = [
         Path.home() / "Applications" / "PomoCLI Timer.app",
@@ -859,6 +890,7 @@ def status_shorthand():
     _status_cmd_impl()
 
 def _status_cmd_impl():
+    cli_db = str(Path(DB_PATH).resolve())
     response = client.status()
     if response.get("status") == "ok":
         data = response.get("data", {})
@@ -882,8 +914,24 @@ def _status_cmd_impl():
                     f"Pomodoro status: [bold {color}]{state.capitalize()}[/bold {color}] - "
                     f"{mins:02d}:{secs:02d} left"
                 )
+        daemon_db = data.get("db_path")
+        if daemon_db:
+            console.print(f"[dim]Daemon database: {daemon_db}[/dim]")
+            if daemon_db != cli_db:
+                console.print(
+                    "[bold yellow]Warning:[/bold yellow] this shell's CLI uses a different file:\n"
+                    f"  [dim]{cli_db}[/dim]\n"
+                    "Start the daemon with the same [bold]POMOCLI_DB_PATH[/bold] or events "
+                    "and distractions will not land in the DB you expect."
+                )
+        else:
+            console.print(
+                f"[dim]This CLI's database: {cli_db}[/dim] "
+                "[dim](daemon did not report db_path; upgrade pomocli)[/dim]"
+            )
     else:
         console.print("Pomodoro status: [bold]Not running (Daemon down)[/bold]")
+        console.print(f"[dim]This CLI's database would be: {cli_db}[/dim]")
 
 
 SESSION_STATUS_VALUES = {"running", "paused", "completed", "stopped", "killed"}
@@ -1051,6 +1099,49 @@ def session_edit_cmd(
         else identifier
     )
     console.print(f"[bold green]Updated session {display_id}.[/bold green]")
+
+
+@session_app.command("repair")
+def session_repair_cmd(
+    identifier: str = typer.Argument(..., help="Session short ID or numeric PK"),
+):
+    """Close a stuck ``running``/``paused`` session in the database.
+
+    Use when the daemon exited without writing final state (e.g. ``kill -9``).
+    ``end_time`` is set if it was null. If ``duration_logged`` was 0, it is set from
+    ``start_time`` through the effective end instant; otherwise the logged duration is
+    unchanged. Refuses when this session is still bound to the live timer—stop or kill
+    the timer first.
+    """
+    session_pk = _resolve_session_pk_or_exit(identifier)
+    live = _get_daemon_session_id()
+    if live is not None and live == session_pk:
+        console.print(
+            "[bold red]That session is still bound to the running timer. "
+            "Stop or kill the session from the timer first, then repair only if the DB "
+            "is still wrong.[/bold red]"
+        )
+        raise typer.Exit(1)
+
+    changed = repair_session(session_pk)
+    session_row = get_session_by_id(session_pk)
+    display_id = (
+        format_session_public_id(session_pk, session_row["start_time"])
+        if session_row
+        else identifier
+    )
+    if not changed:
+        cur = str(_session_row_field(session_row, "status", "?") or "?")
+        console.print(
+            f"[yellow]Session {display_id} is not open in the DB (status={cur}); "
+            "nothing to repair.[/yellow]"
+        )
+        raise typer.Exit(0)
+
+    console.print(
+        f"[bold green]Repaired session {display_id}: marked stopped and ensured end_time. "
+        "If duration was zero, it was set from the start through end time.[/bold green]"
+    )
 
 
 @session_app.command("cancel")

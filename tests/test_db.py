@@ -20,6 +20,7 @@ from pomocli.db.operations import (
     resolve_session_identifier,
     delete_session_cascade,
     get_session_by_id,
+    repair_session,
 )
 from pomocli.db.connection import init_db, get_connection
 
@@ -168,3 +169,100 @@ def test_delete_session_cascade_removes_related_rows(mocker, tmp_path):
     assert tags_count == 0
     assert distractions_count == 0
     assert events_count == 0
+
+
+def test_repair_session_closes_running_and_paused(mocker, tmp_path):
+    db_path = tmp_path / "test.db"
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    init_db()
+
+    task_id = get_or_create_task("Repair me")
+    sid_run = create_session(task_id)
+    sid_pause = create_session(task_id)
+
+    conn = get_connection()
+    conn.execute(
+        "UPDATE sessions SET status = 'paused', end_time = NULL WHERE id = ?",
+        (sid_pause,),
+    )
+    conn.execute(
+        "UPDATE sessions SET start_time = '2020-06-15 10:00:00', duration_logged = 0 "
+        "WHERE id IN (?, ?)",
+        (sid_run, sid_pause),
+    )
+    conn.commit()
+    conn.close()
+
+    assert repair_session(sid_run)
+    assert repair_session(sid_pause)
+
+    row_a = get_session_by_id(sid_run)
+    row_b = get_session_by_id(sid_pause)
+    assert row_a["status"] == "stopped"
+    assert row_b["status"] == "stopped"
+    assert row_a["end_time"] is not None
+    assert row_b["end_time"] is not None
+    assert row_a["duration_logged"] > 3600
+    assert row_b["duration_logged"] > 3600
+
+    assert not repair_session(sid_run)
+
+
+def test_repair_session_preserves_nonzero_duration_logged(mocker, tmp_path):
+    db_path = tmp_path / "test.db"
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    init_db()
+
+    task_id = get_or_create_task("Keep duration")
+    sid = create_session(task_id)
+    conn = get_connection()
+    conn.execute(
+        "UPDATE sessions SET duration_logged = 555, start_time = '2020-06-15 10:00:00' "
+        "WHERE id = ?",
+        (sid,),
+    )
+    conn.commit()
+    conn.close()
+
+    assert repair_session(sid)
+    assert get_session_by_id(sid)["duration_logged"] == 555
+
+
+def test_repair_session_zero_duration_uses_existing_end_time(mocker, tmp_path):
+    db_path = tmp_path / "test.db"
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    init_db()
+
+    task_id = get_or_create_task("Span me")
+    sid = create_session(task_id)
+    conn = get_connection()
+    conn.execute(
+        """
+        UPDATE sessions SET
+            start_time = '2020-06-15 10:00:00',
+            end_time = '2020-06-15 10:30:00',
+            duration_logged = 0,
+            status = 'running'
+        WHERE id = ?
+        """,
+        (sid,),
+    )
+    conn.commit()
+    conn.close()
+
+    assert repair_session(sid)
+    row = get_session_by_id(sid)
+    assert row["status"] == "stopped"
+    assert row["end_time"] == "2020-06-15 10:30:00"
+    assert row["duration_logged"] == 30 * 60
+
+
+def test_repair_session_noop_on_completed(mocker, tmp_path):
+    db_path = tmp_path / "test.db"
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    init_db()
+
+    task_id = get_or_create_task("Done")
+    sid = create_session(task_id)
+    update_session(sid, "completed", 60, end_time=True)
+    assert not repair_session(sid)

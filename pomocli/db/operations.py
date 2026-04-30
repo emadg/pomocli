@@ -444,6 +444,47 @@ def edit_session(
     return changed
 
 
+def repair_session(session_id: int) -> bool:
+    """Mark a stuck ``running``/``paused`` row as ``stopped`` and set ``end_time`` if missing.
+
+    Used when the daemon died without persisting (e.g. ``kill -9``). If
+    ``duration_logged`` is 0, sets it to the non-negative whole-second span from
+    ``start_time`` to the session end instant (existing ``end_time`` or ``now``).
+    Non-zero ``duration_logged`` is left unchanged. Returns True if a row was updated.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    now_sql = utc_now_sql()
+    cursor.execute(
+        """
+        UPDATE sessions
+        SET status = 'stopped',
+            end_time = COALESCE(end_time, ?),
+            duration_logged = CASE
+                WHEN IFNULL(duration_logged, 0) = 0 THEN MAX(
+                    0,
+                    CAST(
+                        ROUND(
+                            (
+                                julianday(COALESCE(end_time, ?))
+                                - julianday(start_time)
+                            ) * 86400.0
+                        ) AS INTEGER
+                    )
+                )
+                ELSE duration_logged
+            END
+        WHERE id = ?
+          AND status IN ('running', 'paused')
+        """,
+        (now_sql, now_sql, session_id),
+    )
+    changed = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return changed
+
+
 def cancel_session(session_id: int) -> bool:
     """Mark a past session as killed (cancelled)."""
     conn = get_connection()

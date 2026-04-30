@@ -46,12 +46,12 @@ dev = [
 
 [tool.poe.tasks]
 # --- Build ---
-stamp = { shell = "python scripts/stamp_version.py" }
+stamp = { shell = "uv run python scripts/stamp_version.py" }
 # Regenerate `pomocli/ui/logo_ansi_generated.py` from assets/pomocli-mac-app.png (requires Pillow).
-generate-logo = { shell = "python scripts/generate_cli_logo.py" }
+generate-logo = { shell = "uv run python scripts/generate_cli_logo.py" }
 
 # --- Testing ---
-test = "pytest"
+test = "uv run python -m pytest"
 
 # --- CLI ---
 version = "pomo --version"
@@ -59,25 +59,30 @@ version = "pomo --version"
 install-cli = { shell = "poe stamp && uv tool install . --reinstall --force && echo \"\" && echo \"On PATH:\" && pomo -V" }
 
 # --- Daemon management ---
-kill-daemon = { shell = "pkill -f 'pomocli.daemon' || echo 'No daemon running'" }
+# Match both `python -m pomocli.daemon` and uv-tool layouts that only show .../daemon/__main__.py in ps.
+kill-daemon = { shell = "pkill -f 'pomocli.daemon' 2>/dev/null; pkill -f 'pomocli/daemon/__main__' 2>/dev/null; rm -f \"$HOME/.config/pomocli/pomo.sock\" \"$HOME/.config/pomocli/pomo.pid\"; echo 'Daemon stopped (socket/pid cleaned)'" }
 kill-app = { shell = "pkill PomoCLITimer || echo 'No status bar app running'" }
-kill-all = { shell = "pkill -f 'pomocli.daemon' 2>/dev/null; pkill PomoCLITimer 2>/dev/null; echo 'All pomocli processes killed'" }
+kill-all = { shell = "pkill -f 'pomocli.daemon' 2>/dev/null; pkill -f 'pomocli/daemon/__main__' 2>/dev/null; pkill PomoCLITimer 2>/dev/null; rm -f \"$HOME/.config/pomocli/pomo.sock\" \"$HOME/.config/pomocli/pomo.pid\"; echo 'All pomocli processes killed'" }
+
+# Background daemon (blocking `pomo daemon` is not suitable for poe scripts that should return).
+restart-daemon-bg = { shell = "nohup pomo daemon >/dev/null 2>&1 & sleep 0.5" }
+relaunch-stack = { shell = "poe restart-daemon-bg && poe launch-app" }
 
 # --- Swift status bar app ---
 build-app = { shell = "cd macos/PomoCLITimer && make build" }
-install-app = { shell = "cd macos/PomoCLITimer && make install && echo \"Installed PomoCLITimer $(python ../../scripts/stamp_version.py)\"" }
+install-app = { shell = "cd macos/PomoCLITimer && make install && echo \"Installed PomoCLITimer $(uv run python ../../scripts/stamp_version.py)\"" }
 clean-app = { shell = "cd macos/PomoCLITimer && make clean" }
 launch-app = { shell = "open -g \"$HOME/Applications/PomoCLI Timer.app\"" }
 
 # --- Full rebuild (kill everything, rebuild both, relaunch) ---
-rebuild = { shell = "poe stamp && poe kill-all && uv tool install . --reinstall --force && cd macos/PomoCLITimer && make install && echo \"\" && echo \"CLI on PATH:\" && pomo -V && echo \"Run: pomo start\"" }
+rebuild = { shell = "poe stamp && poe kill-all && uv tool install . --reinstall --force && cd macos/PomoCLITimer && make install && echo \"\" && echo \"CLI on PATH:\" && pomo -V && poe relaunch-stack && echo \"\" && echo \"Python daemon restarted in background; menu bar app opened if installed.\"" }
 
 # --- Logs ---
 logs = { shell = "log stream --predicate 'process == \"PomoCLITimer\"' --level info" }
 
 # Tasks with env (subtables must follow all inline task defs — otherwise keys leak into the wrong table)
 [tool.poe.tasks.seed-db]
-cmd = "python scripts/seed_test_db.py"
+cmd = "uv run python scripts/seed_test_db.py"
 env = { POMOCLI_DB_PATH = "test_pomocli.db" }
 
 [tool.poe.tasks.pomo-test]
