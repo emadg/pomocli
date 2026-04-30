@@ -10,6 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from ..daemon.client import DaemonClient, is_daemon_running
+from ..daemon.lifecycle import cli_db_path, start_daemon_background, stop_daemon
 from ..db.operations import (
     get_or_create_task,
     create_session,
@@ -160,8 +161,92 @@ session_app = typer.Typer(
 )
 app.add_typer(session_app, name="session")
 app.add_typer(session_app, name="ssn", hidden=True)
+
+daemon_app = typer.Typer(
+    help="Manage the background timer daemon (Unix socket server).",
+    invoke_without_command=True,
+)
 console = Console()
 client = DaemonClient()
+
+
+def _print_daemon_database_line() -> None:
+    console.print(f"[dim]Database:[/dim] [cyan]{cli_db_path()}[/cyan]")
+
+
+@daemon_app.callback(invoke_without_command=True)
+def _daemon_group(ctx: typer.Context) -> None:
+    if ctx.invoked_subcommand is not None:
+        return
+    console.print(
+        "[bold red]Missing command.[/bold red] Try [bold]pomo daemon -h[/bold] for help."
+    )
+    raise typer.Exit(2)
+
+
+@daemon_app.command("start")
+def daemon_start_cmd(
+    attach: bool = typer.Option(
+        False,
+        "--attach",
+        help="Run in the foreground and stream logs to this terminal (stop other daemon first).",
+    ),
+):
+    """Start the daemon in the background, or with --attach in the foreground."""
+    _print_daemon_database_line()
+    if attach:
+        if is_daemon_running():
+            console.print(
+                "[bold red]A daemon is already running.[/bold red] "
+                "Run [bold]pomo daemon stop[/bold] first, or use [bold]pomo daemon start[/bold] without --attach."
+            )
+            raise typer.Exit(1)
+        from ..daemon.server import DaemonServer
+
+        console.print("[dim]Attached mode — logging to this terminal. Ctrl+C to stop.[/dim]")
+        DaemonServer().start()
+        return
+
+    ok, msg = start_daemon_background()
+    if ok:
+        console.print(f"[bold green]{msg}[/bold green]")
+    else:
+        console.print(f"[bold yellow]{msg}[/bold yellow]")
+        raise typer.Exit(1)
+
+
+@daemon_app.command("stop")
+def daemon_stop_cmd():
+    """Stop the daemon gracefully (socket shutdown, then SIGTERM if needed)."""
+    _print_daemon_database_line()
+    ok, msg = stop_daemon(client)
+    if ok:
+        console.print(f"[bold green]{msg}[/bold green]")
+    else:
+        console.print(f"[bold red]{msg}[/bold red]")
+        raise typer.Exit(1)
+
+
+@daemon_app.command("restart")
+def daemon_restart_cmd():
+    """Stop the daemon if running, then start it in the background."""
+    _print_daemon_database_line()
+    ok_stop, msg_stop = stop_daemon(client)
+    if ok_stop:
+        console.print(f"[dim]{msg_stop}[/dim]")
+    else:
+        console.print(f"[bold red]{msg_stop}[/bold red]")
+        raise typer.Exit(1)
+
+    ok, msg = start_daemon_background()
+    if ok:
+        console.print(f"[bold green]{msg}[/bold green]")
+    else:
+        console.print(f"[bold yellow]{msg}[/bold yellow]")
+        raise typer.Exit(1)
+
+
+app.add_typer(daemon_app, name="daemon")
 
 
 def _dedupe_preserve_order(items: list[str]) -> list[str]:
@@ -373,8 +458,8 @@ def _require_daemon_db_matches_cli(status_resp: dict) -> None:
         "`session_events` and timer updates there, so new work looks broken "
         "(empty events, stuck running, zero duration until repair).\n\n"
         "Fix: use the same [bold]POMOCLI_DB_PATH[/bold] for both, stop the old daemon "
-        "(quit the timer app or [bold]pomo stop[/bold] / kill the process), then "
-        "[bold]pomo start[/bold] or [bold]pomo daemon[/bold] so a fresh daemon inherits your env."
+        "(quit the timer app, [bold]pomo daemon stop[/bold], or [bold]pomo stop[/bold] / kill the process), then "
+        "[bold]pomo daemon start[/bold] or [bold]pomo start[/bold] so a fresh daemon inherits your env."
     )
     raise typer.Exit(1)
 
@@ -574,40 +659,15 @@ def init_cmd():
     console.print("[bold green]Database initialized successfully.[/bold green]")
 
 
-@app.command()
-def daemon():
-    """Start the background daemon (usually run automatically)."""
-    from ..daemon.server import DaemonServer
-
-    server = DaemonServer()
-    server.start()
-
-
 def ensure_daemon():
     """Ensure the daemon is running, starting it if needed."""
-    if is_daemon_running():
-        resp = client.ping()
-        if resp.get("status") == "ok":
-            _launch_timer_app()
-            return
-
-    subprocess.Popen(
-        [sys.executable, "-m", "pomocli.daemon"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-    )
-
-    for _ in range(6):
-        time.sleep(0.5)
-        if is_daemon_running():
-            resp = client.ping()
-            if resp.get("status") == "ok":
-                _launch_timer_app()
-                return
+    ok, _msg = start_daemon_background()
+    if ok:
+        _launch_timer_app()
+        return
 
     console.print(
-        "[bold yellow]Warning: Daemon may not have started. Try 'pomo daemon' manually.[/bold yellow]"
+        "[bold yellow]Warning: Daemon may not have started. Try [bold]pomo daemon start[/bold] manually.[/bold yellow]"
     )
 
 

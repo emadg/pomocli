@@ -59,11 +59,15 @@ class DaemonServer:
         elif self.timer.state == TimerState.PAUSED:
             self.timer.resume()
 
-    def _stop_session(self):
-        if self.timer.session_id:
-            logged = self.timer.logged_focus_seconds()
-            update_session(self.timer.session_id, "stopped", logged, end_time=True)
-        self.timer.stop()
+    def _persist_open_session_as_stopped(self, source: str) -> None:
+        """Write DB final state for RUNNING/PAUSED session (not post-countdown STOPPED)."""
+        if not self.timer.session_id:
+            return
+        if self.timer.state not in (TimerState.RUNNING, TimerState.PAUSED):
+            return
+        logged = self.timer.logged_focus_seconds()
+        update_session(self.timer.session_id, "stopped", logged, end_time=True)
+        log_session_event(self.timer.session_id, "stop", {"source": source})
 
     def _on_idle(self):
         if self.timer.state == TimerState.RUNNING:
@@ -114,16 +118,19 @@ class DaemonServer:
             response = {"status": "ok"}
 
             if command == "start":
+                # timer.start() calls stop() internally without DB writes; finalize any
+                # still-active session so it cannot remain "running" in the DB.
+                self._persist_open_session_as_stopped("superseded_by_start")
                 duration = args.get("duration", 25)
                 session_id = args.get("session_id")
                 timer_mode = args.get("timer_mode", "countdown")
                 if timer_mode == "elapsed":
                     self.timer.start_elapsed(session_id)
-                    if session_id:
+                    if session_id is not None:
                         log_session_event(session_id, "start", {"mode": "elapsed"})
                 else:
                     self.timer.start(duration, session_id)
-                    if session_id:
+                    if session_id is not None:
                         log_session_event(
                             session_id, "start", {"duration_minutes": duration}
                         )
@@ -219,6 +226,7 @@ class DaemonServer:
                     }
             elif command == "status":
                 status_data = self.timer.get_status()
+                status_data["db_path"] = str(Path(DB_PATH).resolve())
                 if status_data.get("session_id"):
                     try:
                         from ..db.operations import get_session_task_info
@@ -325,6 +333,7 @@ class DaemonServer:
         logging.info("Shutting down daemon")
         self._running = False
         self._stop_event.set()
+        self._persist_open_session_as_stopped("daemon_shutdown")
         self.timer.stop()
         self.idle_detector.stop()
         try:

@@ -20,17 +20,20 @@ def test_cli_status_when_daemon_down(mocker):
     result = runner.invoke(app, ["status"])
     assert result.exit_code == 0
     assert "Not running" in result.stdout
+    assert "This CLI's database would be" in result.stdout
 
-def test_cli_status_running(mocker):
-    # Mock the client to return a running state
+def test_cli_status_running(mocker, tmp_path):
+    cli_db = tmp_path / "same.sqlite"
+    mocker.patch("pomocli.cli.main.DB_PATH", cli_db)
     mock_status = {
         "status": "ok",
         "data": {
             "state": "running",
             "time_left": 1500,
             "duration": 1500,
-            "session_id": 1
-        }
+            "session_id": 1,
+            "db_path": str(cli_db.resolve()),
+        },
     }
     mocker.patch('pomocli.daemon.client.DaemonClient.status', return_value=mock_status)
     
@@ -38,6 +41,7 @@ def test_cli_status_running(mocker):
     assert result.exit_code == 0
     assert "Running" in result.stdout
     assert "25:00" in result.stdout
+    assert "Daemon database:" in result.stdout
 
 def test_cli_pause(mocker):
     mocker.patch('pomocli.daemon.client.DaemonClient.pause', return_value={"status": "ok"})
@@ -65,6 +69,63 @@ def test_cli_shorthand_and_help():
     result = runner.invoke(app, ["ss", "--help"])
     assert result.exit_code == 0
     assert "Shorthand for start" in result.stdout
+
+
+def test_daemon_bare_requires_subcommand():
+    result = runner.invoke(app, ["daemon"])
+    assert result.exit_code == 2
+    assert "Missing command" in result.stdout
+    assert "pomo daemon -h" in result.stdout
+
+
+def test_daemon_help_lists_subcommands():
+    result = runner.invoke(app, ["daemon", "-h"])
+    assert result.exit_code == 0
+    assert "start" in result.stdout
+    assert "stop" in result.stdout
+    assert "restart" in result.stdout
+
+
+def test_daemon_start_help_shows_attach():
+    result = runner.invoke(app, ["daemon", "start", "-h"])
+    assert result.exit_code == 0
+    assert "--attach" in result.stdout
+
+
+def test_daemon_start_background_mocked(mocker):
+    mocker.patch("pomocli.cli.main.cli_db_path", return_value="/tmp/test.db")
+    mocker.patch(
+        "pomocli.cli.main.start_daemon_background",
+        return_value=(True, "Daemon started."),
+    )
+    result = runner.invoke(app, ["daemon", "start"])
+    assert result.exit_code == 0
+    assert "Database:" in result.stdout
+    assert "/tmp/test.db" in result.stdout
+    assert "Daemon started." in result.stdout
+
+
+def test_daemon_stop_mocked(mocker):
+    mocker.patch("pomocli.cli.main.cli_db_path", return_value="/tmp/test.db")
+    mocker.patch(
+        "pomocli.cli.main.stop_daemon",
+        return_value=(True, "Daemon stopped."),
+    )
+    result = runner.invoke(app, ["daemon", "stop"])
+    assert result.exit_code == 0
+    assert "Daemon stopped." in result.stdout
+
+
+def test_daemon_restart_stop_fails_exits(mocker):
+    mocker.patch("pomocli.cli.main.cli_db_path", return_value="/tmp/test.db")
+    mocker.patch(
+        "pomocli.cli.main.stop_daemon",
+        return_value=(False, "Could not stop."),
+    )
+    result = runner.invoke(app, ["daemon", "restart"])
+    assert result.exit_code == 1
+    assert "Could not stop." in result.stdout
+
 
 def test_cli_dash_help():
     result = runner.invoke(app, ["dash", "--help"])
@@ -311,6 +372,80 @@ def _inactive_session_row():
         "end_time": "2026-01-01 08:30:00",
         "status": "completed",
     }
+
+
+def test_start_aborts_when_daemon_db_path_differs(mocker, tmp_path):
+    cli_db = tmp_path / "cli.sqlite"
+    mocker.patch("pomocli.cli.main.DB_PATH", cli_db)
+    mocker.patch("pomocli.cli.main.ensure_daemon")
+    mocker.patch(
+        "pomocli.cli.main.client.status",
+        return_value={
+            "status": "ok",
+            "data": {
+                "state": "stopped",
+                "time_left": 0,
+                "duration": 0,
+                "session_id": None,
+                "db_path": str((tmp_path / "daemon.sqlite").resolve()),
+            },
+        },
+    )
+    create = mocker.patch("pomocli.cli.main.create_session")
+
+    result = runner.invoke(app, ["start", "MyTask"])
+    assert result.exit_code == 1
+    assert "Database path mismatch" in result.stdout
+    create.assert_not_called()
+
+
+def test_session_repair_blocked_when_daemon_holds_session(mocker):
+    mocker.patch("pomocli.cli.main.resolve_session_identifier", return_value=42)
+    mocker.patch("pomocli.cli.main.is_daemon_running", return_value=True)
+    mocker.patch(
+        "pomocli.cli.main.client.status",
+        return_value={"status": "ok", "data": {"session_id": 42}},
+    )
+    repair = mocker.patch("pomocli.cli.main.repair_session")
+
+    result = runner.invoke(app, ["session", "repair", "260042"])
+    assert result.exit_code == 1
+    assert "running timer" in result.stdout
+    repair.assert_not_called()
+
+
+def test_session_repair_calls_db_when_not_live(mocker):
+    mocker.patch("pomocli.cli.main.resolve_session_identifier", return_value=7)
+    mocker.patch("pomocli.cli.main.is_daemon_running", return_value=True)
+    mocker.patch(
+        "pomocli.cli.main.client.status",
+        return_value={"status": "ok", "data": {"session_id": 99}},
+    )
+    mocker.patch(
+        "pomocli.cli.main.get_session_by_id",
+        return_value={"start_time": "2026-01-01 08:00:00", "status": "running"},
+    )
+    repair = mocker.patch("pomocli.cli.main.repair_session", return_value=True)
+
+    result = runner.invoke(app, ["session", "repair", "260007"])
+    assert result.exit_code == 0
+    repair.assert_called_once_with(7)
+    assert "Repaired session" in result.stdout
+
+
+def test_session_repair_noop_message(mocker):
+    mocker.patch("pomocli.cli.main.resolve_session_identifier", return_value=3)
+    mocker.patch("pomocli.cli.main.is_daemon_running", return_value=False)
+    mocker.patch(
+        "pomocli.cli.main.get_session_by_id",
+        return_value={"start_time": "2026-01-01 08:00:00", "status": "completed"},
+    )
+    repair = mocker.patch("pomocli.cli.main.repair_session", return_value=False)
+
+    result = runner.invoke(app, ["session", "repair", "3"])
+    assert result.exit_code == 0
+    assert "nothing to repair" in result.stdout
+    repair.assert_called_once_with(3)
 
 
 def test_session_edit_blocked_when_daemon_holds_session(mocker):

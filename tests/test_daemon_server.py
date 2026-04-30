@@ -195,6 +195,14 @@ def test_complete_countdown_returns_error(mocker):
     update.assert_not_called()
 
 
+def test_status_response_includes_db_path(mocker, tmp_path):
+    server = DaemonServer()
+    mocker.patch("pomocli.daemon.server.DB_PATH", tmp_path / "daemon.sqlite")
+    response = _send(server, "status")
+    assert response["status"] == "ok"
+    assert response["data"]["db_path"] == str((tmp_path / "daemon.sqlite").resolve())
+
+
 def test_complete_no_active_session(mocker):
     server = DaemonServer()
     server.timer.session_id = None
@@ -202,3 +210,66 @@ def test_complete_no_active_session(mocker):
     server.timer.mode = TimerMode.ELAPSED
     response = _send(server, "complete")
     assert response["status"] == "error"
+
+
+def test_shutdown_command_sets_stop_event(mocker):
+    server = DaemonServer()
+    response = _send(server, "shutdown")
+    assert response["status"] == "ok"
+    assert server._stop_event.is_set()
+
+
+def test_daemon_stop_persists_running_session(mocker):
+    server = DaemonServer()
+    update = mocker.patch("pomocli.daemon.server.update_session")
+    log_event = mocker.patch("pomocli.daemon.server.log_session_event")
+    mocker.patch.object(server.timer, "stop")
+    logged = mocker.patch.object(
+        server.timer, "logged_focus_seconds", return_value=42
+    )
+
+    server.timer.session_id = 11
+    server.timer.state = TimerState.RUNNING
+    server.stop()
+
+    logged.assert_called_once()
+    update.assert_called_once_with(11, "stopped", 42, end_time=True)
+    log_event.assert_called_once_with(11, "stop", {"source": "daemon_shutdown"})
+
+
+def test_daemon_stop_does_not_clobber_post_countdown_stopped(mocker):
+    """After natural complete, timer is STOPPED but session_id may linger; DB is already completed."""
+    server = DaemonServer()
+    update = mocker.patch("pomocli.daemon.server.update_session")
+    mocker.patch.object(server.timer, "stop")
+
+    server.timer.session_id = 11
+    server.timer.state = TimerState.STOPPED
+    server.stop()
+
+    update.assert_not_called()
+
+
+def test_start_supersedes_prior_running_session(mocker):
+    server = DaemonServer()
+    mocker.patch("pomocli.daemon.server.play_sound")
+    log_event = mocker.patch("pomocli.daemon.server.log_session_event")
+    update = mocker.patch("pomocli.daemon.server.update_session")
+    mocker.patch.object(server.timer, "start")
+
+    server.timer.session_id = 1
+    server.timer.state = TimerState.RUNNING
+    server.timer.duration = 1500
+    server.timer.time_left = 900
+    server.timer.focus_duration = 1500
+    logged = mocker.patch.object(
+        server.timer, "logged_focus_seconds", return_value=600
+    )
+
+    _send(server, "start", {"duration": 25, "session_id": 2})
+
+    logged.assert_called_once()
+    update.assert_called_once_with(1, "stopped", 600, end_time=True)
+    assert log_event.call_args_list[0].args[:2] == (1, "stop")
+    assert log_event.call_args_list[0].args[2].get("source") == "superseded_by_start"
+    assert log_event.call_args_list[1].args[:2] == (2, "start")

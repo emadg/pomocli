@@ -39,7 +39,7 @@ pomo stop
 pomo complete
 ```
 
-The background daemon starts automatically when you run `pomo start`; you do not need to launch it separately.
+The background daemon starts automatically when you run `pomo start`; you do not need to launch it separately. To control it explicitly, use **`pomo daemon start`** (detached), **`pomo daemon start --attach`** (foreground, logs in the terminal), **`pomo daemon stop`**, or **`pomo daemon restart`**. Each of those prints the **resolved SQLite database path** for the current environment (`POMOCLI_DB_PATH` or default). Bare **`pomo daemon`** reports a missing command; use **`pomo daemon -h`** for help.
 
 ### Interactive mode
 
@@ -58,7 +58,7 @@ Stopwatch sessions still support pause, resume, idle auto-pause, and `stop` / `k
 
 ### Tips
 
-- **Daemon:** You do not need to run the daemon manually; `pomo start` starts it when needed.
+- **Daemon:** `pomo start` starts the daemon if needed; use **`pomo daemon start|stop|restart`** when you want to manage it yourself (see above).
 - **Last task:** `pomo start --last` (or `-l`) resumes the most recently used task.
 - **Tags:** `pomo start "Task" -t focus -t deep-work` attaches tags to the session (stored for each session; useful for your own records and interactive tag hints).
 - **Distractions:** `pomo distract` with an optional description. On **countdown** sessions, each distraction can extend the timer by `distraction_extend_minutes` (default: 2). On **elapsed** sessions, distractions are recorded only; the clock does not change.

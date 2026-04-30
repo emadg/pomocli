@@ -64,8 +64,8 @@ kill-daemon = { shell = "pkill -f 'pomocli.daemon' 2>/dev/null; pkill -f 'pomocl
 kill-app = { shell = "pkill PomoCLITimer || echo 'No status bar app running'" }
 kill-all = { shell = "pkill -f 'pomocli.daemon' 2>/dev/null; pkill -f 'pomocli/daemon/__main__' 2>/dev/null; pkill PomoCLITimer 2>/dev/null; rm -f \"$HOME/.config/pomocli/pomo.sock\" \"$HOME/.config/pomocli/pomo.pid\"; echo 'All pomocli processes killed'" }
 
-# Background daemon (blocking `pomo daemon` is not suitable for poe scripts that should return).
-restart-daemon-bg = { shell = "nohup pomo daemon >/dev/null 2>&1 & sleep 0.5" }
+# Background daemon (`pomo daemon start` returns after spawning a detached process).
+restart-daemon-bg = { shell = "pomo daemon start && sleep 0.5" }
 relaunch-stack = { shell = "poe restart-daemon-bg && poe launch-app" }
 
 # --- Swift status bar app ---

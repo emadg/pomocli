@@ -91,3 +91,7 @@ class DaemonClient:
 
     def ping(self):
         return self._send_command("ping")
+
+    def shutdown(self):
+        """Ask the daemon to exit cleanly (socket server shutdown)."""
+        return self._send_command("shutdown")
