@@ -21,6 +21,8 @@ from pomocli.db.operations import (
     delete_session_cascade,
     get_session_by_id,
     repair_session,
+    get_canonical_project_name,
+    get_canonical_task_name,
 )
 from pomocli.db.connection import init_db, get_connection
 
@@ -266,3 +268,61 @@ def test_repair_session_noop_on_completed(mocker, tmp_path):
     sid = create_session(task_id)
     update_session(sid, "completed", 60, end_time=True)
     assert not repair_session(sid)
+
+
+def _bump_task_last_accessed(task_id: int, ts: str) -> None:
+    conn = get_connection()
+    conn.execute("UPDATE tasks SET last_accessed = ? WHERE id = ?", (ts, task_id))
+    conn.commit()
+    conn.close()
+
+
+def test_get_canonical_project_name_basic(mocker, tmp_path):
+    db_path = tmp_path / "test.db"
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    init_db()
+
+    get_or_create_task("Whatever", "NuCLEAR")
+
+    assert get_canonical_project_name("nuclear") == "NuCLEAR"
+    assert get_canonical_project_name("NUCLEAR") == "NuCLEAR"
+    assert get_canonical_project_name("NuCLEAR") == "NuCLEAR"
+    assert get_canonical_project_name("missing") is None
+
+
+def test_get_canonical_project_name_picks_most_recent_variant(mocker, tmp_path):
+    db_path = tmp_path / "test.db"
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    init_db()
+
+    older = get_or_create_task("a", "nuclear")
+    newer = get_or_create_task("b", "NuCLEAR")
+    _bump_task_last_accessed(older, "2024-01-01 00:00:00")
+    _bump_task_last_accessed(newer, "2026-01-01 00:00:00")
+
+    assert get_canonical_project_name("nuclear") == "NuCLEAR"
+
+
+def test_get_canonical_task_name_basic(mocker, tmp_path):
+    db_path = tmp_path / "test.db"
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    init_db()
+
+    get_or_create_task("Refactor Auth", "Pomocli")
+
+    assert get_canonical_task_name("refactor auth") == "Refactor Auth"
+    assert get_canonical_task_name("REFACTOR AUTH") == "Refactor Auth"
+    assert get_canonical_task_name("nope") is None
+
+
+def test_get_canonical_task_name_picks_most_recent_variant(mocker, tmp_path):
+    db_path = tmp_path / "test.db"
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    init_db()
+
+    older = get_or_create_task("write Docs", "p1")
+    newer = get_or_create_task("Write Docs", "p2")
+    _bump_task_last_accessed(older, "2024-01-01 00:00:00")
+    _bump_task_last_accessed(newer, "2026-01-01 00:00:00")
+
+    assert get_canonical_task_name("write docs") == "Write Docs"

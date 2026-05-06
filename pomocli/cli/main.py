@@ -31,11 +31,14 @@ from ..db.operations import (
     delete_session_cascade,
     update_session,
     repair_session,
+    get_canonical_project_name,
+    get_canonical_task_name,
 )
 from ..db.connection import init_db, DB_PATH
 from ..db.backup import run_db_backup, resolve_backup_dir
 from ..config import load_config, save_config, DEFAULT_CONFIG
 from ..utils.git import get_git_context
+from ..utils.text import normalize_display_name
 from ..time_util import (
     report_time_bounds,
     report_time_bounds_last_n_calendar_days,
@@ -464,6 +467,18 @@ def _require_daemon_db_matches_cli(status_resp: dict) -> None:
     raise typer.Exit(1)
 
 
+def _resolve_project_name(name: str | None) -> str | None:
+    if not name:
+        return None
+    return get_canonical_project_name(name) or normalize_display_name(name) or None
+
+
+def _resolve_task_name(name: str) -> str:
+    if not name:
+        return name
+    return get_canonical_task_name(name) or normalize_display_name(name) or name
+
+
 def _start_session(
     task: str,
     project: str | None,
@@ -490,6 +505,8 @@ def _start_session(
 
     _require_daemon_db_matches_cli(status_resp)
 
+    task = _resolve_task_name(task)
+    project = _resolve_project_name(project)
     task_id = get_or_create_task(task, project, estimate)
     repo_name, branch_name = get_git_context()
     if git_repo is not None:

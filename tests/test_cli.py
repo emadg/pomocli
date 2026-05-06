@@ -528,3 +528,86 @@ def test_session_inspect_num_below_one():
     result = runner.invoke(app, ["session", "inspect", "-n", "0"])
     assert result.exit_code == 1
     assert "at least 1" in result.stdout
+
+
+def _stub_start_environment(mocker, tmp_path):
+    """Wire CLI + DB to the same tmp DB and stub out the daemon for `start`."""
+    db_path = tmp_path / "pomo.db"
+    mocker.patch("pomocli.cli.main.DB_PATH", db_path)
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    mocker.patch("pomocli.cli.main.ensure_daemon")
+    mocker.patch(
+        "pomocli.cli.main.client.status",
+        return_value={
+            "status": "ok",
+            "data": {
+                "state": "stopped",
+                "time_left": 0,
+                "duration": 0,
+                "session_id": None,
+                "db_path": str(db_path.resolve()),
+            },
+        },
+    )
+    mocker.patch(
+        "pomocli.cli.main.client.start",
+        return_value={"status": "ok"},
+    )
+    mocker.patch("pomocli.cli.main.get_git_context", return_value=(None, None))
+    return db_path
+
+
+def _read_tasks(db_path):
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT project_name, task_name FROM tasks ORDER BY id"
+    ).fetchall()
+    conn.close()
+    return [(r["project_name"], r["task_name"]) for r in rows]
+
+
+def test_start_normalizes_new_project_and_task(mocker, tmp_path):
+    db_path = _stub_start_environment(mocker, tmp_path)
+
+    result = runner.invoke(
+        app, ["start", "refactor the auth", "--project", "my project", "-d", "25"]
+    )
+    assert result.exit_code == 0, result.stdout
+    assert _read_tasks(db_path) == [("My Project", "Refactor the Auth")]
+
+
+def test_start_reuses_canonical_project_name(mocker, tmp_path):
+    db_path = _stub_start_environment(mocker, tmp_path)
+
+    from pomocli.db.connection import init_db
+    from pomocli.db.operations import get_or_create_task
+    init_db()
+    get_or_create_task("Existing Task", "NuCLEAR")
+
+    result = runner.invoke(
+        app, ["start", "another task", "--project", "nuclear"]
+    )
+    assert result.exit_code == 0, result.stdout
+    rows = _read_tasks(db_path)
+    project_names = {p for p, _ in rows}
+    assert project_names == {"NuCLEAR"}
+    assert ("NuCLEAR", "Another Task") in rows
+
+
+def test_start_reuses_canonical_task_name(mocker, tmp_path):
+    db_path = _stub_start_environment(mocker, tmp_path)
+
+    from pomocli.db.connection import init_db
+    from pomocli.db.operations import get_or_create_task
+    init_db()
+    get_or_create_task("Refactor Auth", "P1")
+
+    result = runner.invoke(
+        app, ["start", "REFACTOR auth", "--project", "p2"]
+    )
+    assert result.exit_code == 0, result.stdout
+    rows = _read_tasks(db_path)
+    task_names = {t for _, t in rows}
+    assert task_names == {"Refactor Auth"}

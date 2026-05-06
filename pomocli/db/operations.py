@@ -225,6 +225,45 @@ def project_name_exists(project_name: str) -> bool:
     return row is not None
 
 
+def get_canonical_project_name(name: str) -> Optional[str]:
+    """Return the most-recently-used existing project name matching ``name`` case-insensitively."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT project_name
+        FROM tasks
+        WHERE project_name IS NOT NULL
+          AND project_name = ? COLLATE NOCASE
+        ORDER BY last_accessed DESC
+        LIMIT 1
+        """,
+        (name,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return row["project_name"] if row else None
+
+
+def get_canonical_task_name(name: str) -> Optional[str]:
+    """Return the most-recently-used existing task name matching ``name`` case-insensitively."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT task_name
+        FROM tasks
+        WHERE task_name = ? COLLATE NOCASE
+        ORDER BY last_accessed DESC
+        LIMIT 1
+        """,
+        (name,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return row["task_name"] if row else None
+
+
 def log_session_event(
     session_id: int,
     event_type: str,
