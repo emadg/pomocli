@@ -611,3 +611,118 @@ def test_start_reuses_canonical_task_name(mocker, tmp_path):
     rows = _read_tasks(db_path)
     task_names = {t for _, t in rows}
     assert task_names == {"Refactor Auth"}
+
+
+def test_interactive_start_prompts_for_repo_branch_when_outside_git(mocker, monkeypatch):
+    """When `get_git_context` returns (None, None), the interactive flow should prompt
+    for repo + branch from prior sessions for the chosen project, and pass the picks
+    through to `_start_session` as overrides."""
+
+    answers = iter([
+        "existing-task",                # task autocomplete
+        "Pomodoro (countdown)",         # session type select
+        "MyProj",                       # project autocomplete
+        "repo-alpha",                   # repo autocomplete
+        "main",                         # branch autocomplete
+        "25",                           # duration text
+        "",                             # tag autocomplete
+    ])
+
+    class _Prompt:
+        def ask(self_inner):
+            return next(answers)
+
+    fake_questionary = types.SimpleNamespace(
+        autocomplete=lambda *a, **k: _Prompt(),
+        select=lambda *a, **k: _Prompt(),
+        text=lambda *a, **k: _Prompt(),
+        confirm=lambda *a, **k: _Prompt(),
+    )
+    monkeypatch.setitem(__import__("sys").modules, "questionary", fake_questionary)
+
+    mocker.patch("pomocli.cli.main.init_db")
+    mocker.patch(
+        "pomocli.cli.main.load_config",
+        return_value={"history_retention_days": 30, "timezone": "auto", "session_duration": 25},
+    )
+    mocker.patch(
+        "pomocli.cli.main.get_recent_tasks",
+        return_value=[{"task_name": "existing-task", "project_name": "MyProj"}],
+    )
+    mocker.patch("pomocli.cli.main.get_recent_projects", return_value=["MyProj"])
+    mocker.patch("pomocli.cli.main.get_recent_tag_names", return_value=[])
+    mocker.patch("pomocli.cli.main.task_name_exists", return_value=False)
+    mocker.patch("pomocli.cli.main.project_name_exists", return_value=False)
+    mocker.patch("pomocli.cli.main.get_git_context", return_value=(None, None))
+
+    repos_mock = mocker.patch(
+        "pomocli.cli.main.get_recent_repos_for_project",
+        return_value=["repo-alpha", "repo-beta"],
+    )
+    branches_mock = mocker.patch(
+        "pomocli.cli.main.get_recent_branches_for_project_repo",
+        return_value=["main", "feat-x"],
+    )
+    start_mock = mocker.patch("pomocli.cli.main._start_session")
+
+    main._interactive_start()
+
+    repos_mock.assert_called_once()
+    repos_args, repos_kwargs = repos_mock.call_args
+    assert repos_args[0] == "MyProj" or repos_kwargs.get("project_name") == "MyProj"
+
+    branches_mock.assert_called_once()
+    b_args, b_kwargs = branches_mock.call_args
+    assert (b_args[0] == "MyProj" and b_args[1] == "repo-alpha") or (
+        b_kwargs.get("project_name") == "MyProj"
+        and b_kwargs.get("repo") == "repo-alpha"
+    )
+
+    start_mock.assert_called_once()
+    _, kwargs = start_mock.call_args
+    assert kwargs["git_repo"] == "repo-alpha"
+    assert kwargs["git_branch"] == "main"
+
+
+def test_interactive_start_skips_repo_branch_prompt_when_inside_git(mocker, monkeypatch):
+    answers = iter([
+        "existing-task",
+        "Pomodoro (countdown)",
+        "MyProj",
+        "25",
+        "",
+    ])
+
+    class _Prompt:
+        def ask(self_inner):
+            return next(answers)
+
+    fake_questionary = types.SimpleNamespace(
+        autocomplete=lambda *a, **k: _Prompt(),
+        select=lambda *a, **k: _Prompt(),
+        text=lambda *a, **k: _Prompt(),
+        confirm=lambda *a, **k: _Prompt(),
+    )
+    monkeypatch.setitem(__import__("sys").modules, "questionary", fake_questionary)
+
+    mocker.patch("pomocli.cli.main.init_db")
+    mocker.patch(
+        "pomocli.cli.main.load_config",
+        return_value={"history_retention_days": 30, "timezone": "auto", "session_duration": 25},
+    )
+    mocker.patch(
+        "pomocli.cli.main.get_recent_tasks",
+        return_value=[{"task_name": "existing-task", "project_name": "MyProj"}],
+    )
+    mocker.patch("pomocli.cli.main.get_recent_projects", return_value=["MyProj"])
+    mocker.patch("pomocli.cli.main.get_recent_tag_names", return_value=[])
+    mocker.patch("pomocli.cli.main.task_name_exists", return_value=False)
+    mocker.patch("pomocli.cli.main.project_name_exists", return_value=False)
+    mocker.patch("pomocli.cli.main.get_git_context", return_value=("real-repo", "real-branch"))
+
+    repos_mock = mocker.patch("pomocli.cli.main.get_recent_repos_for_project")
+    mocker.patch("pomocli.cli.main._start_session")
+
+    main._interactive_start()
+
+    repos_mock.assert_not_called()

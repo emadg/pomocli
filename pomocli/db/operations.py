@@ -225,6 +225,97 @@ def project_name_exists(project_name: str) -> bool:
     return row is not None
 
 
+def get_recent_repos_for_project(
+    project_name: str,
+    limit: int = 10,
+    days: int | None = None,
+    timezone_config: str = "auto",
+) -> List[str]:
+    """Distinct git_repo values used in sessions for ``project_name`` (case-insensitive),
+    ordered by most-recent ``start_time`` descending, optionally bounded by a calendar-day cutoff."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    if days is not None:
+        tz = get_display_tz(timezone_config)
+        cutoff = retention_cutoff_utc(days, tz)
+        cursor.execute(
+            """
+            SELECT s.git_repo, MAX(s.start_time) AS last_used
+            FROM sessions s JOIN tasks t ON s.task_id = t.id
+            WHERE t.project_name = ? COLLATE NOCASE
+              AND s.git_repo IS NOT NULL
+              AND s.start_time >= ?
+            GROUP BY s.git_repo
+            ORDER BY last_used DESC
+            LIMIT ?
+            """,
+            (project_name, cutoff, limit),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT s.git_repo, MAX(s.start_time) AS last_used
+            FROM sessions s JOIN tasks t ON s.task_id = t.id
+            WHERE t.project_name = ? COLLATE NOCASE
+              AND s.git_repo IS NOT NULL
+            GROUP BY s.git_repo
+            ORDER BY last_used DESC
+            LIMIT ?
+            """,
+            (project_name, limit),
+        )
+    rows = cursor.fetchall()
+    conn.close()
+    return [r["git_repo"] for r in rows]
+
+
+def get_recent_branches_for_project_repo(
+    project_name: str,
+    repo: str,
+    limit: int = 10,
+    days: int | None = None,
+    timezone_config: str = "auto",
+) -> List[str]:
+    """Distinct git_branch values used in sessions for the given project/repo pair,
+    ordered by most-recent ``start_time`` descending."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    if days is not None:
+        tz = get_display_tz(timezone_config)
+        cutoff = retention_cutoff_utc(days, tz)
+        cursor.execute(
+            """
+            SELECT s.git_branch, MAX(s.start_time) AS last_used
+            FROM sessions s JOIN tasks t ON s.task_id = t.id
+            WHERE t.project_name = ? COLLATE NOCASE
+              AND s.git_repo = ?
+              AND s.git_branch IS NOT NULL
+              AND s.start_time >= ?
+            GROUP BY s.git_branch
+            ORDER BY last_used DESC
+            LIMIT ?
+            """,
+            (project_name, repo, cutoff, limit),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT s.git_branch, MAX(s.start_time) AS last_used
+            FROM sessions s JOIN tasks t ON s.task_id = t.id
+            WHERE t.project_name = ? COLLATE NOCASE
+              AND s.git_repo = ?
+              AND s.git_branch IS NOT NULL
+            GROUP BY s.git_branch
+            ORDER BY last_used DESC
+            LIMIT ?
+            """,
+            (project_name, repo, limit),
+        )
+    rows = cursor.fetchall()
+    conn.close()
+    return [r["git_branch"] for r in rows]
+
+
 def get_canonical_project_name(name: str) -> Optional[str]:
     """Return the most-recently-used existing project name matching ``name`` case-insensitively."""
     conn = get_connection()

@@ -23,6 +23,8 @@ from pomocli.db.operations import (
     repair_session,
     get_canonical_project_name,
     get_canonical_task_name,
+    get_recent_repos_for_project,
+    get_recent_branches_for_project_repo,
 )
 from pomocli.db.connection import init_db, get_connection
 
@@ -326,3 +328,82 @@ def test_get_canonical_task_name_picks_most_recent_variant(mocker, tmp_path):
     _bump_task_last_accessed(newer, "2026-01-01 00:00:00")
 
     assert get_canonical_task_name("write docs") == "Write Docs"
+
+
+def _set_session_start_time(session_id: int, ts: str) -> None:
+    conn = get_connection()
+    conn.execute("UPDATE sessions SET start_time = ? WHERE id = ?", (ts, session_id))
+    conn.commit()
+    conn.close()
+
+
+def _seed_session(task_name: str, project: str, repo: str | None, branch: str | None,
+                   start_time: str) -> int:
+    task_id = get_or_create_task(task_name, project)
+    sid = create_session(task_id, repo, branch)
+    _set_session_start_time(sid, start_time)
+    return sid
+
+
+def test_get_recent_repos_for_project_orders_by_recency_and_scopes_by_project(mocker, tmp_path):
+    db_path = tmp_path / "test.db"
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    init_db()
+
+    _seed_session("a", "Pomocli", "alpha", "main", "2026-04-01 00:00:00")
+    _seed_session("b", "Pomocli", "beta",  "main", "2026-04-10 00:00:00")
+    _seed_session("c", "Pomocli", "alpha", "feat", "2026-04-20 00:00:00")  # alpha bumps
+    _seed_session("d", "OtherProj", "gamma", "main", "2026-04-25 00:00:00")  # excluded
+    _seed_session("e", "Pomocli", None,    None,   "2026-04-30 00:00:00")  # null repo excluded
+
+    repos = get_recent_repos_for_project("Pomocli", limit=10)
+    assert repos == ["alpha", "beta"]
+
+
+def test_get_recent_repos_for_project_case_insensitive_match(mocker, tmp_path):
+    db_path = tmp_path / "test.db"
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    init_db()
+
+    _seed_session("a", "NuCLEAR", "alpha", "main", "2026-04-01 00:00:00")
+
+    assert get_recent_repos_for_project("nuclear", limit=10) == ["alpha"]
+
+
+def test_get_recent_repos_for_project_days_cutoff(mocker, tmp_path):
+    db_path = tmp_path / "test.db"
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    init_db()
+
+    # Old row (>1y ago) and very recent row; cutoff "last 14 days" excludes old.
+    _seed_session("a", "P", "old_repo", "main", "2020-01-01 00:00:00")
+    from pomocli.time_util import utc_now_sql
+    _seed_session("b", "P", "new_repo", "main", utc_now_sql())
+
+    repos = get_recent_repos_for_project("P", limit=10, days=14)
+    assert "new_repo" in repos
+    assert "old_repo" not in repos
+
+
+def test_get_recent_branches_for_project_repo(mocker, tmp_path):
+    db_path = tmp_path / "test.db"
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    init_db()
+
+    _seed_session("a", "P", "alpha", "main", "2026-04-01 00:00:00")
+    _seed_session("b", "P", "alpha", "feat-x", "2026-04-10 00:00:00")
+    _seed_session("c", "P", "alpha", "main", "2026-04-20 00:00:00")  # bump main
+    _seed_session("d", "P", "beta",  "release", "2026-04-25 00:00:00")  # different repo
+
+    branches = get_recent_branches_for_project_repo("P", "alpha", limit=10)
+    assert branches == ["main", "feat-x"]
+
+
+def test_get_recent_repos_for_project_empty(mocker, tmp_path):
+    db_path = tmp_path / "test.db"
+    mocker.patch("pomocli.db.connection.DB_PATH", db_path)
+    init_db()
+
+    assert get_recent_repos_for_project("Pomocli", limit=10) == []
+    assert get_recent_branches_for_project_repo("Pomocli", "alpha", limit=10) == []
+

@@ -33,6 +33,8 @@ from ..db.operations import (
     repair_session,
     get_canonical_project_name,
     get_canonical_task_name,
+    get_recent_repos_for_project,
+    get_recent_branches_for_project_repo,
 )
 from ..db.connection import init_db, DB_PATH
 from ..db.backup import run_db_backup, resolve_backup_dir
@@ -410,6 +412,36 @@ def _interactive_start() -> None:
                     raise typer.Abort()
                 project = project.strip() or None
 
+        # --- repo / branch suggestions when outside a git repo ---
+        git_repo_override: str | None = None
+        git_branch_override: str | None = None
+        detected_repo, _detected_branch = get_git_context()
+        if detected_repo is None and project:
+            repos = get_recent_repos_for_project(
+                project, limit=10, days=days, timezone_config=timezone_config
+            )
+            if repos:
+                repo_choices = ["(none)"] + repos
+                repo_ans = questionary.autocomplete(
+                    "Repo (optional, leave blank for none):", choices=repo_choices
+                ).ask()
+                if repo_ans is None:
+                    raise typer.Abort()
+                if repo_ans and repo_ans != "(none)":
+                    git_repo_override = repo_ans
+                    branches = get_recent_branches_for_project_repo(
+                        project, repo_ans, limit=10, days=days, timezone_config=timezone_config
+                    )
+                    if branches:
+                        branch_choices = ["(none)"] + branches
+                        branch_ans = questionary.autocomplete(
+                            "Branch (optional, leave blank for none):", choices=branch_choices
+                        ).ask()
+                        if branch_ans is None:
+                            raise typer.Abort()
+                        if branch_ans and branch_ans != "(none)":
+                            git_branch_override = branch_ans
+
         # --- duration (countdown only) ---
         if elapsed:
             duration = 0
@@ -435,7 +467,16 @@ def _interactive_start() -> None:
         if tag_str:
             tags = [t.strip() for t in tag_str.split(",") if t.strip()]
 
-        _start_session(task, project, duration, estimate=None, tags=tags, elapsed=elapsed)
+        _start_session(
+            task,
+            project,
+            duration,
+            estimate=None,
+            tags=tags,
+            elapsed=elapsed,
+            git_repo=git_repo_override,
+            git_branch=git_branch_override,
+        )
     except KeyboardInterrupt:
         console.print("[bold yellow]Cancelled.[/bold yellow]")
         raise typer.Exit()
