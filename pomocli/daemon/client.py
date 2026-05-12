@@ -64,8 +64,11 @@ class DaemonClient:
         }
         return self._send_command("start", args)
 
-    def pause(self):
-        return self._send_command("pause")
+    def pause(self, source: str | None = None):
+        args: Dict[str, Any] = {}
+        if source is not None:
+            args["source"] = source
+        return self._send_command("pause", args or None)
 
     def resume(self):
         return self._send_command("resume")

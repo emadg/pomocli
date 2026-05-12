@@ -29,6 +29,7 @@
 - **Database backups** (`pomocli.db.backup`): optional gzip compression, rotation, manual `pomo backup`, and automatic background runs via the daemon.
 - Improved interactive UX: cleaner `Ctrl-C` cancellation, de-duplicated fuzzy choices, duplicate-name reuse prompts, and snappier completion caches.
 - Session lifecycle event logging for `start`, `pause`, `resume`, `extend`, `stop`, `kill`, `idle`, and `complete`.
+- **Pause source provenance:** `session_events` rows for `pause` carry a `source` field in `details` JSON: `manual` (user/CLI/menu), `idle` (IdleMonitor inactivity threshold), or `screen_lock` (LockSleepMonitor — Mac sleep / display sleep / lid close / screen lock). Both auto-pause paths show a Resume/Stop NSAlert on return.
 - macOS menu bar icon uses **template** rendering (`pomocli-status-icon.png` primary, `pomocli-status-icon-dark.png` only if the primary PNG is absent from the app bundle) so the system picks contrast against the menu bar / wallpaper tint.
 - Session management foundation:
   - `pomo session list` (alias `ssn list`) for today's sessions with status, focus block / attention-quality footers, total logged time, and distraction notes.

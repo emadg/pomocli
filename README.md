@@ -187,7 +187,8 @@ After install, `pomo start` can auto-launch the app; you can also open it manual
 - **Menu bar** — idle `🍅`; running countdown `🍅 MM:SS` (time remaining); running stopwatch `🍅 ⏱ MM:SS` (time elapsed); paused `⏸ MM:SS` (remaining or elapsed to match the session mode)
 - **Menu** — Pause / Resume, Stop, **Complete session** (stopwatch / elapsed only; hidden for countdown), Quit
 - **Global hotkey** — default Cmd+Shift+D (`hotkey_distraction` in config); after each successful log, a **2s** bolt flash and **2s** lockout before another distraction can be logged. Optional **`distraction_note_prompt`** opens a note dialog first (Cancel skips logging).
-- **Idle detection** — auto-pause when away (Quartz-based)
+- **Idle detection** — auto-pause when user is inactive (no mouse/keyboard, Quartz-based); on return, prompts to Resume or Stop
+- **Lock & sleep detection** — auto-pause when the Mac sleeps, the lid closes, or the screen locks; on wake/unlock, prompts to Resume or Stop the paused session
 
 Global hotkeys and menu-bar integration are provided by the Swift app only; the Python daemon does not register global hotkeys.
 

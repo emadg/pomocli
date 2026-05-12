@@ -137,7 +137,8 @@ class DaemonServer:
                 play_sound("start")
             elif command == "pause":
                 if self.timer.session_id and self.timer.state == TimerState.RUNNING:
-                    log_session_event(self.timer.session_id, "pause", {"source": "manual"})
+                    pause_source = args.get("source", "manual")
+                    log_session_event(self.timer.session_id, "pause", {"source": pause_source})
                 self.timer.pause()
             elif command == "resume":
                 if self.timer.session_id and self.timer.state == TimerState.PAUSED:

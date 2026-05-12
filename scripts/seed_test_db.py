@@ -510,7 +510,7 @@ def generate_data() -> None:
                     start,
                     [
                         ("start", 0, {"duration_minutes": duration_mins}),
-                        ("pause", b, {"source": "manual"}),
+                        ("pause", b, {"source": "screen_lock"}),  # screen_lock source — Mac slept mid-session
                         ("resume", min(b + 5, duration_mins - 1), None),
                         ("complete", duration_mins, None),
                     ],

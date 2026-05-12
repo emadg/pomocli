@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var distractionFeedback: DistractionFeedbackController?
     private var hotkeyManager: GlobalHotkeyManager?
     private var idleMonitor: IdleMonitor?
+    private var lockSleepMonitor: LockSleepMonitor?
     private var pollTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -32,6 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         idleMonitor?.start()
 
+        lockSleepMonitor = LockSleepMonitor(client: client)
+        lockSleepMonitor?.start()
+
         // Poll daemon every second
         pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.pollStatus()
@@ -42,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pollTimer?.invalidate()
         hotkeyManager?.unregister()
         idleMonitor?.stop()
+        lockSleepMonitor?.stop()
     }
 
     private func pollStatus() {

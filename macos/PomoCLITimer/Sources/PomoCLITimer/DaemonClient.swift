@@ -31,8 +31,12 @@ final class DaemonClient {
         sendCommand("status", completion: completion)
     }
 
-    func pause(completion: @escaping (DaemonResponse?) -> Void) {
-        sendCommand("pause", completion: completion)
+    func pause(source: String? = nil, completion: @escaping (DaemonResponse?) -> Void) {
+        var args: [String: Any] = [:]
+        if let source {
+            args["source"] = source
+        }
+        sendCommand("pause", args: args, completion: completion)
     }
 
     func resume(completion: @escaping (DaemonResponse?) -> Void) {
