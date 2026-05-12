@@ -2,6 +2,7 @@ import Carbon
 import AppKit
 
 final class GlobalHotkeyManager {
+    private static var nextHotKeyID: UInt32 = 1
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
     private var globalMonitor: Any?
@@ -9,6 +10,7 @@ final class GlobalHotkeyManager {
     private let keyCode: UInt32
     private let modifiers: UInt32
     private let cocoaModifiers: NSEvent.ModifierFlags
+    private let hotKeyIDValue: UInt32
     private var lastCallbackTime: Date = .distantPast
     private let debounceInterval: TimeInterval = 0.5
 
@@ -18,6 +20,8 @@ final class GlobalHotkeyManager {
         self.keyCode = parsed.keyCode
         self.modifiers = parsed.carbonModifiers
         self.cocoaModifiers = parsed.cocoaModifiers
+        self.hotKeyIDValue = Self.nextHotKeyID
+        Self.nextHotKeyID += 1
     }
 
     func register() {
@@ -59,7 +63,7 @@ final class GlobalHotkeyManager {
     // MARK: - Carbon hotkey
 
     private func registerCarbon() -> Bool {
-        let hotKeyID = EventHotKeyID(signature: OSType(0x504F4D4F), id: 1) // "POMO"
+        let hotKeyID = EventHotKeyID(signature: OSType(0x504F4D4F), id: hotKeyIDValue) // "POMO"
 
         var eventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
@@ -70,9 +74,22 @@ final class GlobalHotkeyManager {
         let handlerStatus = InstallEventHandler(
             GetApplicationEventTarget(),
             { _, event, userData -> OSStatus in
-                guard let userData else { return OSStatus(eventNotHandledErr) }
+                guard let userData, let event else { return OSStatus(eventNotHandledErr) }
                 let manager = Unmanaged<GlobalHotkeyManager>.fromOpaque(userData).takeUnretainedValue()
-                NSLog("[PomoCLI Timer] Global hotkey pressed (Carbon)")
+                var firedID = EventHotKeyID()
+                let status = GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &firedID
+                )
+                guard status == noErr, firedID.id == manager.hotKeyIDValue else {
+                    return OSStatus(eventNotHandledErr)
+                }
+                NSLog("[PomoCLI Timer] Global hotkey pressed (Carbon, id=\(firedID.id))")
                 manager.invokeCallback()
                 return noErr
             },

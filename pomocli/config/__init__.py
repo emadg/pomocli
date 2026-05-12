@@ -11,6 +11,7 @@ DEFAULT_CONFIG = {
     "sound_enabled": True,
     "history_retention_days": 30,
     "hotkey_distraction": "cmd+shift+d",
+    "hotkey_quick_start": "cmd+shift+p",
     "distraction_extend_minutes": 2,
     "distraction_note_prompt": False,
     "timezone": "auto",

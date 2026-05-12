@@ -35,6 +35,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         quickStartHotkey?.register()
 
+        statusBar.onQuickStart = { [weak self] in
+            self?.quickStartController?.show()
+        }
+        statusBar.onLogDistraction = { [weak self] in
+            self?.distractionFeedback?.handleDistractionHotkey()
+        }
+
         // Set up idle monitor
         idleMonitor = IdleMonitor(
             timeoutSeconds: config.idleTimeout,

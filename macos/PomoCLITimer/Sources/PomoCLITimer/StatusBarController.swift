@@ -2,12 +2,17 @@ import AppKit
 
 final class StatusBarController {
     private let statusItem: NSStatusItem
+    private let quickStartItem: NSMenuItem
+    private let logDistractionItem: NSMenuItem
     private let pauseResumeItem: NSMenuItem
     private let stopItem: NSMenuItem
     private let completeItem: NSMenuItem
+    private let sessionSeparator: NSMenuItem
     private var currentState: String = "stopped"
     private var currentTimerMode: String = "countdown"
     private let client: DaemonClient
+    var onQuickStart: (() -> Void)?
+    var onLogDistraction: (() -> Void)?
 
     private static let statusIconHeight: CGFloat = 18
 
@@ -62,15 +67,21 @@ final class StatusBarController {
         statusItem.button?.imagePosition = .imageLeading
         statusItem.button?.title = ""
 
+        quickStartItem = NSMenuItem(title: "Quick Start…", action: nil, keyEquivalent: "")
+        logDistractionItem = NSMenuItem(title: "Log Distraction", action: nil, keyEquivalent: "")
         pauseResumeItem = NSMenuItem(title: "Pause", action: nil, keyEquivalent: "")
         stopItem = NSMenuItem(title: "Stop", action: nil, keyEquivalent: "")
-        completeItem = NSMenuItem(title: "Complete session", action: nil, keyEquivalent: "")
+        completeItem = NSMenuItem(title: "Complete Session", action: nil, keyEquivalent: "")
+        sessionSeparator = NSMenuItem.separator()
 
         let menu = NSMenu()
+        menu.autoenablesItems = false
+        menu.addItem(quickStartItem)
+        menu.addItem(logDistractionItem)
         menu.addItem(pauseResumeItem)
         menu.addItem(stopItem)
         menu.addItem(completeItem)
-        menu.addItem(NSMenuItem.separator())
+        menu.addItem(sessionSeparator)
         let versionItem = NSMenuItem(title: "PomoCLI Timer \(appBuild)", action: nil, keyEquivalent: "")
         versionItem.isEnabled = false
         menu.addItem(versionItem)
@@ -78,6 +89,10 @@ final class StatusBarController {
 
         statusItem.menu = menu
 
+        quickStartItem.target = self
+        quickStartItem.action = #selector(triggerQuickStart)
+        logDistractionItem.target = self
+        logDistractionItem.action = #selector(triggerLogDistraction)
         pauseResumeItem.target = self
         pauseResumeItem.action = #selector(togglePauseResume)
         stopItem.target = self
@@ -129,23 +144,39 @@ final class StatusBarController {
     private func updateMenuState() {
         let isElapsed = currentTimerMode == "elapsed"
         let active = currentState == "running" || currentState == "paused"
-        completeItem.isHidden = !isElapsed
-        completeItem.isEnabled = isElapsed && active
+
+        quickStartItem.isHidden = active
+        logDistractionItem.isHidden = !active
+        pauseResumeItem.isHidden = !active
+        stopItem.isHidden = !active
+        completeItem.isHidden = !(active && isElapsed)
+        completeItem.isEnabled = active && isElapsed
 
         switch currentState {
         case "running":
             pauseResumeItem.title = "Pause"
             pauseResumeItem.isEnabled = true
             stopItem.isEnabled = true
+            logDistractionItem.isEnabled = true
         case "paused":
             pauseResumeItem.title = "Resume"
             pauseResumeItem.isEnabled = true
             stopItem.isEnabled = true
+            logDistractionItem.isEnabled = true
         default:
             pauseResumeItem.title = "Pause"
             pauseResumeItem.isEnabled = false
             stopItem.isEnabled = false
+            logDistractionItem.isEnabled = false
         }
+    }
+
+    @objc private func triggerQuickStart() {
+        onQuickStart?()
+    }
+
+    @objc private func triggerLogDistraction() {
+        onLogDistraction?()
     }
 
     @objc private func togglePauseResume() {

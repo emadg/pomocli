@@ -1611,6 +1611,14 @@ def config_cmd():
             raise typer.Abort()
         cfg["hotkey_distraction"] = hotkey
 
+        quick_start_hotkey = questionary.text(
+            "Quick-start popup hotkey (e.g. cmd+shift+p):",
+            default=cfg.get("hotkey_quick_start", DEFAULT_CONFIG["hotkey_quick_start"]),
+        ).ask()
+        if quick_start_hotkey is None:
+            raise typer.Abort()
+        cfg["hotkey_quick_start"] = quick_start_hotkey
+
         note_prompt = questionary.confirm(
             "macOS menu bar: show a dialog for an optional distraction note before logging? "
             "(Cancel skips logging; 2s flash/cooldown always apply after a successful log.)",
@@ -1654,6 +1662,7 @@ def config_cmd():
         table.add_row(label, str(cfg[key]))
     table.add_row("Sound enabled", str(cfg["sound_enabled"]))
     table.add_row("Distraction hotkey", cfg["hotkey_distraction"])
+    table.add_row("Quick-start hotkey", cfg.get("hotkey_quick_start", DEFAULT_CONFIG["hotkey_quick_start"]))
     table.add_row(
         "Distraction note prompt (macOS)",
         str(cfg.get("distraction_note_prompt", DEFAULT_CONFIG["distraction_note_prompt"])),
