@@ -5,6 +5,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let client = DaemonClient()
     private var distractionFeedback: DistractionFeedbackController?
     private var hotkeyManager: GlobalHotkeyManager?
+    private var quickStartHotkey: GlobalHotkeyManager?
+    private var quickStartController: QuickStartWindowController?
     private var idleMonitor: IdleMonitor?
     private var lockSleepMonitor: LockSleepMonitor?
     private var pollTimer: Timer?
@@ -26,6 +28,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         hotkeyManager?.register()
 
+        // Quick-start popup hotkey (default cmd+shift+p)
+        quickStartController = QuickStartWindowController()
+        quickStartHotkey = GlobalHotkeyManager(hotkeyString: config.hotkeyQuickStart) { [weak self] in
+            self?.quickStartController?.show()
+        }
+        quickStartHotkey?.register()
+
         // Set up idle monitor
         idleMonitor = IdleMonitor(
             timeoutSeconds: config.idleTimeout,
@@ -45,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         pollTimer?.invalidate()
         hotkeyManager?.unregister()
+        quickStartHotkey?.unregister()
         idleMonitor?.stop()
         lockSleepMonitor?.stop()
     }

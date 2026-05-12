@@ -530,6 +530,8 @@ def _start_session(
     elapsed: bool = False,
     git_repo: str | None = None,
     git_branch: str | None = None,
+    fallback_git_repo: str | None = None,
+    fallback_git_branch: str | None = None,
 ) -> None:
     """Core logic shared by CLI-args path and interactive path."""
     ensure_daemon()
@@ -550,6 +552,11 @@ def _start_session(
     project = _resolve_project_name(project)
     task_id = get_or_create_task(task, project, estimate)
     repo_name, branch_name = get_git_context()
+    if repo_name is None and branch_name is None:
+        if git_repo is None and fallback_git_repo is not None:
+            repo_name = fallback_git_repo
+        if git_branch is None and fallback_git_branch is not None:
+            branch_name = fallback_git_branch
     if git_repo is not None:
         repo_name = git_repo
     if git_branch is not None:
@@ -809,6 +816,9 @@ def start_shorthand(
 def _start_cmd_impl(task, project, duration, estimate, last, tag, elapsed, git_repo, git_branch):
     init_db()
 
+    fallback_repo: str | None = None
+    fallback_branch: str | None = None
+
     # Handle --last flag
     if last:
         recent = get_recent_tasks(limit=1)
@@ -818,6 +828,17 @@ def _start_cmd_impl(task, project, duration, estimate, last, tag, elapsed, git_r
         last_task = recent[0]
         task = last_task["task_name"]
         project = project or last_task["project_name"]
+        # Pull git_repo/git_branch from the most recent session, used only as
+        # fallback when the current cwd is not in a git repo.
+        recent_sessions = get_recent_sessions(limit=1)
+        if recent_sessions:
+            row = recent_sessions[0]
+            try:
+                fallback_repo = row["git_repo"]
+                fallback_branch = row["git_branch"]
+            except (IndexError, KeyError):
+                fallback_repo = None
+                fallback_branch = None
     elif not task:
         # No task provided and no --last — launch interactive prompt
         if _is_interactive():
@@ -836,7 +857,37 @@ def _start_cmd_impl(task, project, duration, estimate, last, tag, elapsed, git_r
         elapsed=elapsed,
         git_repo=git_repo,
         git_branch=git_branch,
+        fallback_git_repo=fallback_repo,
+        fallback_git_branch=fallback_branch,
     )
+
+
+@app.command(name="last-session", hidden=True)
+def last_session_cmd(
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON for machine consumption."),
+):
+    """Print the most recent session's task/project/repo/branch (used by the macOS quick-start popup)."""
+    import json as _json
+
+    init_db()
+    recent = get_recent_sessions(limit=1)
+    if not recent:
+        if json_output:
+            typer.echo(_json.dumps({}))
+        else:
+            console.print("[yellow]No previous sessions.[/yellow]")
+        return
+    row = recent[0]
+    payload = {
+        "task": row["task_name"],
+        "project": row["project_name"],
+        "git_repo": row["git_repo"],
+        "git_branch": row["git_branch"],
+    }
+    if json_output:
+        typer.echo(_json.dumps(payload))
+    else:
+        console.print(payload)
 
 
 @app.command()

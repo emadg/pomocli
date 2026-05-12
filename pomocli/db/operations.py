@@ -427,6 +427,8 @@ def get_recent_sessions(limit: int) -> List[sqlite3.Row]:
             s.duration_logged,
             s.status,
             s.timer_mode,
+            s.git_repo,
+            s.git_branch,
             t.task_name,
             t.project_name,
             COUNT(d.id) AS distraction_count,

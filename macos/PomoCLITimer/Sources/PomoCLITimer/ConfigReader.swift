@@ -7,6 +7,8 @@ struct PomoConfig {
     var distractionExtendMinutes: Int = 2
     /// When true, macOS menu bar app shows a note field before logging a distraction hotkey.
     var distractionNotePrompt: Bool = false
+    /// Global hotkey that opens the quick-start popup window.
+    var hotkeyQuickStart: String = "cmd+shift+p"
 
     static func load() -> PomoConfig {
         var config = PomoConfig()
@@ -43,6 +45,8 @@ struct PomoConfig {
                 config.distractionExtendMinutes = Int(value) ?? config.distractionExtendMinutes
             case "distraction_note_prompt":
                 config.distractionNotePrompt = (value == "true" || value == "1")
+            case "hotkey_quick_start":
+                config.hotkeyQuickStart = value
             default:
                 break
             }
