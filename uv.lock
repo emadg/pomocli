@@ -435,6 +435,7 @@ name = "pomocli"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "click" },
     { name = "gitpython" },
     { name = "questionary" },
     { name = "rich" },
@@ -459,6 +460,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "click", specifier = ">=8.3.1" },
     { name = "gitpython", specifier = ">=3.1.46" },
     { name = "pynput", marker = "extra == 'macos'", specifier = ">=1.8.1" },
     { name = "questionary", specifier = ">=2.1.0" },

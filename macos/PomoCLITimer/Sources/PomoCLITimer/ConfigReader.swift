@@ -11,17 +11,24 @@ struct PomoConfig {
     var hotkeyQuickStart: String = "cmd+shift+p"
 
     static func load() -> PomoConfig {
-        var config = PomoConfig()
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let path = "\(home)/.config/pomocli/config.toml"
 
         guard let contents = try? String(contentsOfFile: path, encoding: .utf8) else {
-            return config
+            return PomoConfig()
         }
 
+        return parse(contents)
+    }
+
+    static func parse(_ contents: String) -> PomoConfig {
+        var config = PomoConfig()
         for line in contents.components(separatedBy: .newlines) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty, !trimmed.hasPrefix("#"), !trimmed.hasPrefix("[") else { continue }
+            // TOML root keys end at the first table. Linux preferences can use
+            // the same key names without replacing macOS hotkeys or defaults.
+            if trimmed.hasPrefix("[") { break }
+            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
 
             let parts = trimmed.split(separator: "=", maxSplits: 1)
             guard parts.count == 2 else { continue }
