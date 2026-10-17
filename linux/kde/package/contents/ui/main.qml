@@ -49,6 +49,7 @@ PlasmoidItem {
     toolTipSubText: stateText + (activeSession ? " · " + timeText : "")
     toolTipTextFormat: Text.PlainText
     Plasmoid.status: activeSession ? PlasmaCore.Types.ActiveStatus : PlasmaCore.Types.PassiveStatus
+    Plasmoid.backgroundHints: root.inPanel ? PlasmaCore.Types.DefaultBackground : PlasmaCore.Types.NoBackground
 
     compactRepresentation: PanelTimer {
         connected: root.connected
@@ -64,10 +65,10 @@ PlasmoidItem {
 
     fullRepresentation: Loader {
         sourceComponent: root.inPanel ? controlsComponent : desktopComponent
-        Layout.minimumWidth: root.inPanel ? Kirigami.Units.gridUnit * 15 : 32
-        Layout.minimumHeight: root.inPanel ? implicitHeight : 32
+        Layout.minimumWidth: root.inPanel ? Kirigami.Units.gridUnit * 15 : item ? item.minimumWidth : 32
+        Layout.minimumHeight: root.inPanel ? implicitHeight : item ? item.minimumHeight : 32
         Layout.preferredWidth: root.inPanel ? Kirigami.Units.gridUnit * 19 : 264
-        Layout.preferredHeight: root.inPanel ? implicitHeight : 210
+        Layout.preferredHeight: root.inPanel ? implicitHeight : 176
     }
 
     Component {

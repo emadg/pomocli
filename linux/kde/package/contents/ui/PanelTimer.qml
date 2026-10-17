@@ -16,7 +16,7 @@ QQC2.AbstractButton {
     property color foregroundColor: Kirigami.Theme.textColor
 
     readonly property real edge: Kirigami.Units.smallSpacing
-    readonly property real idleExtent: Math.max(16, Math.min(48, (vertical ? width : height) - edge * 2))
+    readonly property real idleExtent: 0.85 * Math.max(16, Math.min(48, (vertical ? width : height) - edge * 2))
     readonly property bool showVerticalTimer: width >= verticalMetrics.advanceWidth + edge * 2
     readonly property real timerFontSize: Math.max(9, Math.min(Math.max(12, Kirigami.Theme.defaultFont.pixelSize),
         Math.max(1, height - edge * 2) * 100 / Math.max(1, panelFontMetrics.height)))

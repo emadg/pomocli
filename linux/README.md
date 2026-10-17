@@ -99,15 +99,18 @@ widget may require a new Plasma session before it appears. The compiled bridge
 is installed alongside the widget, so no global QML import-path setting is
 needed. Compile it on the target distribution against that system's Qt6.
 
-The idle panel shows just the larger original icon. A diagonal red slash marks
-a missing connection to the companion or Python daemon. Running and paused
-sessions use a smaller icon beside a countdown or stopwatch with stable width
-between ticks. Narrow vertical panels fall back to the icon when the timer
+The idle panel shows just the original icon at a modest size. A diagonal red
+slash with a dark outline marks a missing connection to the companion or Python
+daemon. Running and paused sessions use a smaller icon beside a countdown or
+stopwatch with stable width between ticks. Narrow vertical panels fall back to the icon when the timer
 would not fit.
 
 On the desktop, a tiny widget shows only the icon. More space reveals **Pomo**
-and then **Ready to focus! 🍅👀** while idle. During a session, the timer grows
-with the widget and task/project names appear when they fit. Icon and text sizes
+and then **Ready to focus! 🍅👀** while idle. During a session, the timer always
+remains visible, including in short or narrow widgets. Active placement has a
+96 × 36 minimum size, with extra width for long hour formats. Secondary details
+hide first when space is tight. The centered state/icon, timer, and grouped
+task/project details share a single card with small margins. Icon and text sizes
 are capped so a large widget stays readable. Click either placement for Quick
 Start, distraction, Pause/Resume, Stop and Save, stopwatch completion, and Quit
 Companion. Errors appear with the controls. Closing the companion leaves the
@@ -250,9 +253,10 @@ desktop-file-validate linux/packaging/org.pomocli.Desktop.desktop
 The widget UI tests render offscreen at desktop and panel sizes, including
 disconnected, paused, long-timer, light/dark, and narrow vertical cases. Set
 `POMO_WIDGET_PREVIEW_DIR` to an absolute directory when running `test-widget`
-to save PNG previews. They exercise the presentation components and compile
-the Plasma entry point; placement in a live Plasma shell still needs a manual
-check after installation.
+to save PNG previews. Resize checks keep the active timer visible across layout
+breakpoints and check its rendered font at the minimum size. They exercise the
+presentation components and compile the Plasma entry point; placement in a
+live Plasma shell still needs a manual check after installation.
 
 The integration smoke runner starts its own private D-Bus session with fake
 desktop services, a real daemon and companion, temporary data, and a fake

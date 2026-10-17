@@ -10,6 +10,10 @@ Item {
     readonly property string statusIcon: Qt.resolvedUrl("../images/pomocli-status-icon.svg")
     readonly property bool showStatusIcon: source === statusIcon
     readonly property bool lightForeground: color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722 > 0.5
+    readonly property real iconExtent: Math.min(width, height)
+    readonly property real slashLength: iconExtent * 1.24
+    readonly property real slashThickness: Math.max(2, Math.min(7, iconExtent * 0.075))
+    readonly property real slashOutline: Math.max(1, Math.min(3, iconExtent * 0.035))
 
     implicitWidth: Kirigami.Units.iconSizes.small
     implicitHeight: implicitWidth
@@ -35,10 +39,20 @@ Item {
         objectName: "disconnectSlash"
         anchors.centerIn: parent
         visible: root.disconnected
-        width: Math.min(root.width, root.height) * 1.1
-        height: Math.max(2, Math.min(5, Math.min(root.width, root.height) * 0.085))
+        width: root.slashLength + root.slashOutline * 2
+        height: root.slashThickness + root.slashOutline * 2
         radius: height / 2
         rotation: -45
-        color: Kirigami.Theme.negativeTextColor
+        color: "#111315"
+        antialiasing: true
+        Rectangle {
+            objectName: "disconnectSlashStroke"
+            anchors.centerIn: parent
+            width: root.slashLength
+            height: root.slashThickness
+            radius: height / 2
+            color: Kirigami.Theme.negativeTextColor
+            antialiasing: true
+        }
     }
 }

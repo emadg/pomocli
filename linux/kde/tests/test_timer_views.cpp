@@ -1,4 +1,5 @@
 #include <QDir>
+#include <QJSValue>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQuickItem>
@@ -79,15 +80,19 @@ private slots:
         QTest::addColumn<bool>("task");
         QTest::addColumn<bool>("project");
         QTest::newRow("idle-tiny") << QSize(40, 40) << false << true << false << false << false << false << false;
-        QTest::newRow("idle-medium") << QSize(180, 96) << false << true << false << true << false << false << false;
+        QTest::newRow("idle-strip") << QSize(212, 36) << false << true << false << true << false << false << false;
+        QTest::newRow("idle-medium") << QSize(180, 96) << false << true << false << true << true << false << false;
         QTest::newRow("idle-large") << QSize(300, 220) << false << true << false << true << true << false << false;
         QTest::newRow("idle-huge") << QSize(600, 400) << false << true << false << true << true << false << false;
         QTest::newRow("disconnected") << QSize(300, 220) << false << false << false << true << true << false << false;
-        QTest::newRow("active-tiny") << QSize(56, 56) << true << true << false << false << false << false << false;
-        QTest::newRow("active-short") << QSize(300, 44) << true << true << false << false << false << false << false;
-        QTest::newRow("active-narrow") << QSize(48, 240) << true << true << false << false << false << false << false;
+        QTest::newRow("active-tiny") << QSize(56, 56) << true << true << true << false << false << false << false;
+        QTest::newRow("active-short") << QSize(300, 44) << true << true << true << false << false << false << false;
+        QTest::newRow("active-narrow") << QSize(48, 240) << true << true << true << false << false << false << false;
+        QTest::newRow("active-recorded-strip") << QSize(212, 36) << true << true << true << false << false << false << false;
+        QTest::newRow("active-minimum") << QSize(96, 36) << true << true << true << false << false << false << false;
         QTest::newRow("active-small") << QSize(150, 85) << true << true << true << false << false << false << false;
-        QTest::newRow("active-medium") << QSize(260, 180) << true << true << true << false << false << true << false;
+        QTest::newRow("active-medium") << QSize(260, 180) << true << true << true << false << false << true << true;
+        QTest::newRow("active-recorded-portrait") << QSize(180, 212) << true << true << true << false << false << true << true;
         QTest::newRow("active-large") << QSize(320, 240) << true << true << true << false << false << true << true;
         QTest::newRow("active-huge") << QSize(600, 400) << true << true << true << false << false << true << true;
     }
@@ -116,9 +121,9 @@ private slots:
         QCOMPARE(item->property("showCaption").toBool(), caption);
         QCOMPARE(item->property("showTask").toBool(), task);
         QCOMPARE(item->property("showProject").toBool(), project);
-        QVERIFY(item->property("idleIconSize").toReal() <= 96);
-        QVERIFY(item->property("timerFontSize").toReal() <= 72);
-        for (const char *name : {"idleGlyph", "pomoTitle", "readyCaption", "sessionTimer", "taskLabel", "projectLabel"})
+        QVERIFY(item->property("idleIconSize").toReal() <= 128);
+        QVERIFY(item->property("timerFontSize").toReal() <= 112);
+        for (const char *name : {"idleGlyph", "pomoTitle", "readyCaption", "sessionHeader", "sessionTimer", "taskLabel", "projectLabel"})
             fits(item.data(), name);
         auto *slash = item->findChild<QQuickItem *>(QStringLiteral("disconnectSlash"));
         QVERIFY(slash);
@@ -137,6 +142,8 @@ private slots:
         QVERIFY(item->findChild<QQuickItem *>(QStringLiteral("idleGlyph"))->isVisible());
         QVERIFY(!item->findChild<QQuickItem *>(QStringLiteral("horizontalTimer"))->isVisible());
         QVERIFY(item->property("idleExtent").toReal() > 16);
+        const qreal previousExtent = 40 - item->property("edge").toReal() * 2;
+        QVERIFY(qAbs(item->property("idleExtent").toReal() / previousExtent - 0.85) < 0.001);
         capture(window, QStringLiteral("panel-idle"));
         item->setProperty("connected", false);
         QTest::qWait(30);
@@ -222,6 +229,110 @@ private slots:
         fits(item.data(), "taskLabel");
         fits(item.data(), "projectLabel");
         capture(window, QStringLiteral("desktop-long-stopwatch"));
+    }
+
+    void resizeKeepsTimerVisible()
+    {
+        QQuickWindow window;
+        QScopedPointer<QQuickItem> item(create(QStringLiteral("DesktopTimer.qml"), {
+            {"connected", true}, {"activeSession", true}, {"stateText", "Focus session"},
+            {"taskName", "Task"}, {"projectName", "Project"},
+        }));
+        QVERIFY(item);
+        auto *timer = item->findChild<QQuickItem *>(QStringLiteral("sessionTimer"));
+        QVERIFY(timer);
+        for (const QString &time : {QStringLiteral("24:58"), QStringLiteral("1:00:00"), QStringLiteral("123:45:59")}) {
+            item->setProperty("timeText", time);
+            for (const QSize &size : {QSize(240, 180), QSize(212, 36), QSize(48, 180), QSize(56, 56),
+                     QSize(96, 36), QSize(132, 111), QSize(132, 112), QSize(143, 143), QSize(144, 144),
+                     QSize(144, 72), QSize(143, 71), QSize(180, 212), QSize(320, 240), QSize(300, 44)}) {
+                display(window, item.data(), size);
+                QVERIFY(timer->isVisible());
+                QCOMPARE(timer->property("text").toString(), time);
+                fits(item.data(), "sessionTimer");
+                QVERIFY(timer->property("contentWidth").toReal() <= timer->width() + 1);
+                for (const char *name : {"sessionHeader", "taskLabel", "projectLabel"})
+                    fits(item.data(), name);
+            }
+            const QSize minimum(qCeil(item->property("minimumWidth").toReal()),
+                qCeil(item->property("minimumHeight").toReal()));
+            display(window, item.data(), minimum);
+            const QJSValue fontInfo = timer->property("fontInfo").value<QJSValue>();
+            QVERIFY(fontInfo.property(QStringLiteral("pixelSize")).toNumber() >= 16);
+            fits(item.data(), "sessionTimer");
+        }
+    }
+
+    void sessionHierarchy()
+    {
+        QQuickWindow window;
+        QScopedPointer<QQuickItem> item(create(QStringLiteral("DesktopTimer.qml"), {
+            {"connected", true}, {"activeSession", true}, {"stateText", "Focus session"},
+            {"timeText", "24:36"}, {"taskName", "Test"}, {"projectName", "Test Project"},
+        }));
+        QVERIFY(item);
+        display(window, item.data(), QSize(320, 280));
+        const auto bounds = [&](const QString &name) {
+            auto *child = item->findChild<QQuickItem *>(name);
+            return child->mapRectToItem(item.data(), child->boundingRect());
+        };
+        const QRectF header = bounds(QStringLiteral("sessionGlyph")).united(bounds(QStringLiteral("sessionState")));
+        const QRectF timer = bounds(QStringLiteral("sessionTimer"));
+        const QRectF task = bounds(QStringLiteral("taskLabel"));
+        const QRectF project = bounds(QStringLiteral("projectLabel"));
+        QVERIFY(qAbs(header.center().x() - item->width() / 2) < 1);
+        QVERIFY(header.bottom() < timer.top());
+        QVERIFY(timer.bottom() < task.top());
+        QVERIFY(task.bottom() < project.top());
+        QVERIFY(project.top() - task.bottom() < task.top() - timer.bottom());
+        auto *timerItem = item->findChild<QQuickItem *>(QStringLiteral("sessionTimer"));
+        QVERIFY(timerItem->property("contentWidth").toReal() > item->width() * 0.8);
+        capture(window, QStringLiteral("active-session-hierarchy"));
+    }
+
+    void outlinedDisconnect_data()
+    {
+        QTest::addColumn<bool>("dark");
+        QTest::newRow("disconnected-light") << false;
+        QTest::newRow("disconnected-dark") << true;
+    }
+
+    void outlinedDisconnect()
+    {
+        QFETCH(bool, dark);
+        QQuickWindow window;
+        const QColor background(dark ? "#232629" : "#f4f4f4");
+        QScopedPointer<QQuickItem> item(create(QStringLiteral("DesktopTimer.qml"), {
+            {"connected", false}, {"foregroundColor", QColor(dark ? "#eff0f1" : "#232629")},
+            {"surfaceColor", background},
+        }));
+        QVERIFY(item);
+        display(window, item.data(), QSize(300, 220));
+        window.setColor(background);
+        QTest::qWait(30);
+        auto *glyph = item->findChild<QQuickItem *>(QStringLiteral("idleGlyph"));
+        QVERIFY(glyph);
+        auto *outline = glyph->findChild<QQuickItem *>(QStringLiteral("disconnectSlash"));
+        QVERIFY(outline);
+        auto *stroke = outline->findChild<QQuickItem *>(QStringLiteral("disconnectSlashStroke"));
+        QVERIFY(stroke);
+        QVERIFY(outline->width() > glyph->width() * 1.24);
+        const QImage image = window.grabWindow();
+        const QRect bounds = glyph->mapRectToItem(item.data(), glyph->boundingRect()).toAlignedRect().intersected(image.rect());
+        const QColor red = stroke->property("color").value<QColor>();
+        int blackPixels = 0;
+        int redPixels = 0;
+        for (int y = bounds.top(); y <= bounds.bottom(); ++y)
+            for (int x = bounds.left(); x <= bounds.right(); ++x) {
+                const QColor pixel = image.pixelColor(x, y);
+                if (qAbs(pixel.red() - 17) < 5 && qAbs(pixel.green() - 19) < 5 && qAbs(pixel.blue() - 21) < 5)
+                    ++blackPixels;
+                if (qAbs(pixel.red() - red.red()) < 5 && qAbs(pixel.green() - red.green()) < 5 && qAbs(pixel.blue() - red.blue()) < 5)
+                    ++redPixels;
+            }
+        QVERIFY2(blackPixels > 100, "Disconnected slash needs a visible dark outline");
+        QVERIFY2(redPixels > 150, "Disconnected slash needs a visible red stroke");
+        capture(window, QString::fromLatin1(QTest::currentDataTag()));
     }
 
     void lightAndDark()
