@@ -18,8 +18,14 @@ file(COPY package/ DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/package")
 set(POMO_STATUS_ICON "${CMAKE_CURRENT_SOURCE_DIR}/../../assets/pomocli-status-icon.svg")
 configure_file("${POMO_STATUS_ICON}"
     "${CMAKE_CURRENT_BINARY_DIR}/package/contents/images/pomocli-status-icon.svg" COPYONLY)
+# Render the same paths directly in either foreground contrast. This also works
+# when Plasma's style palette differs from the desktop/application palette.
+file(READ "${POMO_STATUS_ICON}" POMO_STATUS_SVG)
+string(REPLACE "fill=\"currentColor\"" "fill=\"#eff0f1\"" POMO_LIGHT_STATUS_SVG "${POMO_STATUS_SVG}")
+set(POMO_LIGHT_STATUS_ICON "${CMAKE_CURRENT_BINARY_DIR}/package/contents/images/pomocli-status-icon-light.svg")
+file(WRITE "${POMO_LIGHT_STATUS_ICON}" "${POMO_LIGHT_STATUS_SVG}")
 install(DIRECTORY package/ DESTINATION "${POMO_PLASMOID_DIR}")
-install(FILES "${POMO_STATUS_ICON}" DESTINATION "${POMO_PLASMOID_DIR}/contents/images")
+install(FILES "${POMO_STATUS_ICON}" "${POMO_LIGHT_STATUS_ICON}" DESTINATION "${POMO_PLASMOID_DIR}/contents/images")
 # The widget manager reads KPlugin.Icon, independently of the panel's QML.
 # Give the widget its own icon so widget-only installs never depend on the
 # desktop companion's launcher icon or an older cached image under that name.
@@ -31,7 +37,7 @@ install(TARGETS pomoclidesktopplugin
 )
 
 if(POMO_BUILD_TESTS)
-    find_package(Qt6 6.4 REQUIRED COMPONENTS Test)
+    find_package(Qt6 6.4 REQUIRED COMPONENTS Test Quick)
     add_executable(test_desktopbridge
         tests/test_desktopbridge.cpp
         src/desktopbridge.cpp
@@ -45,4 +51,14 @@ if(POMO_BUILD_TESTS)
     add_dependencies(test_desktopbridge pomoclidesktopplugin)
     find_program(DBUS_RUN_SESSION dbus-run-session REQUIRED)
     add_test(NAME desktopbridge COMMAND "${DBUS_RUN_SESSION}" -- $<TARGET_FILE:test_desktopbridge>)
+
+    add_executable(test_timer_views tests/test_timer_views.cpp)
+    target_link_libraries(test_timer_views PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+    target_compile_definitions(test_timer_views PRIVATE
+        POMO_TEST_QML_DIRECTORY="${CMAKE_CURRENT_BINARY_DIR}/package/contents/ui/"
+    )
+    add_dependencies(test_timer_views pomoclidesktopplugin)
+    add_test(NAME timer_views COMMAND "${DBUS_RUN_SESSION}" -- $<TARGET_FILE:test_timer_views>)
+    set_tests_properties(timer_views PROPERTIES ENVIRONMENT
+        "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;XDG_CACHE_HOME=${CMAKE_CURRENT_BINARY_DIR}/test-cache")
 endif()

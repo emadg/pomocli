@@ -36,7 +36,7 @@ else
     description='Plasma 6 panel timer for PomoCLI'
     make -C "$linux_dir" install-widget PREFIX=/usr DESTDIR="$stage" JOBS="$jobs" BUILD_DIR="$linux_dir/build/deb-kde"
     executables=(-e "$stage/usr/share/plasma/plasmoids/org.pomocli.timer/contents/ui/bridge/libpomoclidesktopplugin.so")
-    extra_depends=", pomocli-desktop (= $version), plasma-workspace (>= 4:6.0), qml6-module-org-kde-kirigami, qml6-module-org-kde-ksvg, qml6-module-qtquick-controls, qml6-module-qtquick-layouts"
+    extra_depends=", pomocli-desktop (= $version), plasma-workspace (>= 4:6.0), qml6-module-org-kde-kirigami, qml6-module-qtquick-controls, qml6-module-qtquick-layouts"
 fi
 
 # dpkg-shlibdeps discovers distro-specific names (including t64 transitions)

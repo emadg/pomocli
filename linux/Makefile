@@ -20,7 +20,7 @@ help:
 	  'make native          Build the tray companion and on-demand GTK4 dialogs (default)' \
 	  'make native-minimal  Build the tray companion without dialogs' \
 	  'make widget          Build the optional Plasma 6 panel widget' \
-	  'make test-widget     Build and run isolated D-Bus bridge tests' \
+	  'make test-widget     Run isolated D-Bus bridge and responsive UI tests' \
 	  'make install         Install the native companion under PREFIX (~/.local by default)' \
 	  'make install-widget  Build and install the optional Plasma widget' \
 	  'make uninstall       Remove installed native companion and widget files' \

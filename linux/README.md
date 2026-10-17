@@ -99,20 +99,30 @@ widget may require a new Plasma session before it appears. The compiled bridge
 is installed alongside the widget, so no global QML import-path setting is
 needed. Compile it on the target distribution against that system's Qt6.
 
-The panel shows a fixed-width countdown or stopwatch; paused, idle, and
-disconnected states remain visible. Click it for Quick Start, distraction,
-Pause/Resume, Stop and Save, stopwatch completion, and Quit Companion. Errors
-appear in the popup. Closing the companion leaves the Python timer running.
+The idle panel shows just the larger original icon. A diagonal red slash marks
+a missing connection to the companion or Python daemon. Running and paused
+sessions use a smaller icon beside a countdown or stopwatch with stable width
+between ticks. Narrow vertical panels fall back to the icon when the timer
+would not fit.
+
+On the desktop, a tiny widget shows only the icon. More space reveals **Pomo**
+and then **Ready to focus! 🍅👀** while idle. During a session, the timer grows
+with the widget and task/project names appear when they fit. Icon and text sizes
+are capped so a large widget stays readable. Click either placement for Quick
+Start, distraction, Pause/Resume, Stop and Save, stopwatch completion, and Quit
+Companion. Errors appear with the controls. Closing the companion leaves the
+Python timer running.
 
 To avoid showing both tray and panel controls, set `show_tray = false` under
 `[linux]` in `~/.config/pomocli/config.toml`, or start `pomo-tray --no-tray`.
 The widget connects to the companion over D-Bus and never polls the CLI itself.
 
 The panel and launcher use `assets/pomocli-status-icon.svg`, traced from the
-same PNG template as the macOS menu bar. The panel icon follows the Plasma
-palette, including with Qt's software renderer. To regenerate the vector after
-changing the PNG, run `python3 scripts/trace_status_icon.py` with Pillow and
-Potrace installed; these are only needed for regeneration.
+same PNG template as the macOS menu bar. The widget selects dark or light SVG
+paths for contrast with its foreground palette, including with Qt's software
+renderer. Both variants come from the same vector at build time. To regenerate
+the vector after changing the PNG, run `python3 scripts/trace_status_icon.py`
+with Pillow and Potrace installed; these are only needed for regeneration.
 
 ### Login autostart and removal
 
@@ -232,10 +242,17 @@ the optional standalone Swift config-parser regression test needs `swiftc`.
 Run these checks from the repository root:
 
 ```sh
-make -C linux test-widget        # isolated D-Bus bridge tests; Qt6 Test required
+make -C linux test-widget        # isolated bridge and responsive UI tests; Qt6 Test required
 cargo test --manifest-path linux/native/Cargo.toml --locked -j 1 --features dialogs
 desktop-file-validate linux/packaging/org.pomocli.Desktop.desktop
 ```
+
+The widget UI tests render offscreen at desktop and panel sizes, including
+disconnected, paused, long-timer, light/dark, and narrow vertical cases. Set
+`POMO_WIDGET_PREVIEW_DIR` to an absolute directory when running `test-widget`
+to save PNG previews. They exercise the presentation components and compile
+the Plasma entry point; placement in a live Plasma shell still needs a manual
+check after installation.
 
 The integration smoke runner starts its own private D-Bus session with fake
 desktop services, a real daemon and companion, temporary data, and a fake
