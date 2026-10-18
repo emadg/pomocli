@@ -9,6 +9,7 @@ description = "A lightweight, feature-rich Python CLI Pomodoro timer with option
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "click>=8.3.1",
     "gitpython>=3.1.46",
     "questionary>=2.1.0",
     "rich>=14.3.3",

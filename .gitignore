@@ -23,3 +23,7 @@ pomocli/_build_info.py
 macos/PomoCLITimer/.build/
 macos/PomoCLITimer/PomoCLI Timer.app/
 macos/PomoCLITimer/Sources/PomoCLITimer/BuildInfo.swift
+
+# Linux native builds
+linux/native/target/
+linux/build/

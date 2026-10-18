@@ -1,0 +1,15 @@
+{
+    "KPlugin": {
+        "Authors": [{"Name": "PomoCLI contributors"}],
+        "Category": "Utilities",
+        "Description": "A lightweight panel timer and controls for PomoCLI",
+        "Icon": "org.pomocli.timer",
+        "Id": "org.pomocli.timer",
+        "Name": "PomoCLI Timer",
+        "Version": "0.1.0",
+        "Website": "https://github.com/emadg/pomocli",
+        "BugReportUrl": "https://github.com/emadg/pomocli/issues"
+    },
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

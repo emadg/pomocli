@@ -147,9 +147,14 @@ Everything under `~/.config/pomocli/`:
 
 | Path | Purpose |
 |------|---------|
+| `pomo.sock` | Local daemon socket (desktop companion and CLI) |
 | `pomocli.db` | SQLite: tasks, sessions (`timer_mode`: `countdown` or `elapsed`), tags, distractions |
 | `config.toml` | User preferences |
 | `backups/` | Default directory for automatic and manual backups |
+
+For isolated development, `POMOCLI_CONFIG_DIR` overrides the config/data directory,
+and `POMOCLI_SOCKET` overrides the daemon socket. Use the same values for the CLI,
+daemon, and Linux companion. `POMOCLI_DB_PATH` can override the database independently.
 
 Override the database location for backups or demos:
 
@@ -166,6 +171,20 @@ Pomocli can automatically back up your database using the SQLite backup API (ens
 - **Manual:** Run `pomo backup` at any time (or via cron).
 - **Compression:** Backups are gzipped by default (`.db.gz`). To restore, just unzip it: `gunzip -c pomocli-YYYYMMDD-HHMMSS.db.gz > restored.db`.
 - **Rotation:** Old backups are automatically deleted so only the newest `backup_max_versions` remain.
+
+## Linux desktop companion
+
+The optional Linux companion adds tray controls, quick start, desktop shortcuts,
+notifications, and idle/lock/suspend auto-pause. A separate Plasma 6 panel widget
+keeps the timer visible beside its icon on KDE, including Wayland sessions.
+
+The resident companion is Rust and communicates directly with the existing
+Python daemon. GTK4 dialogs run only when opened. Other desktops can use the
+portable StatusNotifier/AppIndicator tray; GNOME requires a compatible tray
+extension. Desktop integrations are capability-dependent outside KDE.
+
+See [Linux installation, configuration, and desktop support](linux/README.md).
+The Python CLI and macOS app remain available independently.
 
 ## macOS status bar app
 

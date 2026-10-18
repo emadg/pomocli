@@ -1,8 +1,9 @@
 import os
 import sqlite3
 from pathlib import Path
+from ..config import CONFIG_DIR
 
-DB_DIR = Path.home() / ".config" / "pomocli"
+DB_DIR = CONFIG_DIR
 DB_PATH = Path(os.environ.get("POMOCLI_DB_PATH", DB_DIR / "pomocli.db"))
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 

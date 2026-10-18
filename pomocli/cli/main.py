@@ -546,6 +546,9 @@ def _start_session(
         )
         raise typer.Exit(1)
 
+    if status_resp.get("status") != "ok":
+        console.print("[bold red]The timer daemon is unavailable. Try pomo daemon start.[/bold red]")
+        raise typer.Exit(1)
     _require_daemon_db_matches_cli(status_resp)
 
     task = _resolve_task_name(task)
@@ -573,6 +576,7 @@ def _start_session(
         duration,
         session_id,
         timer_mode=timer_mode,
+        expected_status=status_resp.get("data", {}),
     )
     if response.get("status") == "ok":
         if elapsed:
@@ -598,6 +602,7 @@ def _start_session(
         console.print(
             f"[bold red]Failed to start session: {response.get('message')}[/bold red]"
         )
+        raise typer.Exit(1)
 
 
 def interactive_mode() -> None:
@@ -737,7 +742,12 @@ def ensure_daemon():
 
 
 def _launch_timer_app():
-    """Launch the PomoCLI Timer macOS status bar app if installed."""
+    """Launch the optional desktop companion for this platform if installed."""
+    if sys.platform.startswith("linux"):
+        from ..daemon.desktop import launch_linux_companion
+
+        launch_linux_companion()
+        return
     if sys.platform != "darwin":
         return
 
@@ -1573,6 +1583,10 @@ def config_cmd():
         raise typer.Exit(1)
 
     cfg = load_config()
+    linux = sys.platform.startswith("linux")
+    shortcut_config = cfg["linux"] if linux else cfg
+    shortcut_defaults = DEFAULT_CONFIG["linux"] if linux else DEFAULT_CONFIG
+    shortcut_example = "CTRL+ALT" if linux else "cmd+shift"
 
     numeric_keys = [
         ("session_duration", "Session duration (minutes)"),
@@ -1604,29 +1618,40 @@ def config_cmd():
         cfg["sound_enabled"] = sound
 
         hotkey = questionary.text(
-            "Distraction hotkey (e.g. cmd+shift+d):",
-            default=cfg.get("hotkey_distraction", DEFAULT_CONFIG["hotkey_distraction"]),
+            f"Distraction hotkey (e.g. {shortcut_example}+d):",
+            default=shortcut_config.get("hotkey_distraction", shortcut_defaults["hotkey_distraction"]),
         ).ask()
         if hotkey is None:
             raise typer.Abort()
-        cfg["hotkey_distraction"] = hotkey
+        shortcut_config["hotkey_distraction"] = hotkey
 
         quick_start_hotkey = questionary.text(
-            "Quick-start popup hotkey (e.g. cmd+shift+p):",
-            default=cfg.get("hotkey_quick_start", DEFAULT_CONFIG["hotkey_quick_start"]),
+            f"Quick-start popup hotkey (e.g. {shortcut_example}+p):",
+            default=shortcut_config.get("hotkey_quick_start", shortcut_defaults["hotkey_quick_start"]),
         ).ask()
         if quick_start_hotkey is None:
             raise typer.Abort()
-        cfg["hotkey_quick_start"] = quick_start_hotkey
+        shortcut_config["hotkey_quick_start"] = quick_start_hotkey
 
         note_prompt = questionary.confirm(
-            "macOS menu bar: show a dialog for an optional distraction note before logging? "
+            "Desktop companion: show a dialog for an optional distraction note before logging? "
             "(Cancel skips logging; 2s flash/cooldown always apply after a successful log.)",
             default=bool(cfg.get("distraction_note_prompt", DEFAULT_CONFIG["distraction_note_prompt"])),
         ).ask()
         if note_prompt is None:
             raise typer.Abort()
         cfg["distraction_note_prompt"] = note_prompt
+
+        if linux:
+            for key, prompt in (
+                ("show_tray", "Show the tray icon?"),
+                ("autolaunch", "Open the desktop companion when a session starts?"),
+                ("desktop_integration", "Enable idle, lock and sleep detection and global shortcuts?"),
+            ):
+                value = questionary.confirm(prompt, default=bool(cfg["linux"][key])).ask()
+                if value is None:
+                    raise typer.Abort()
+                cfg["linux"][key] = value
 
         tz = questionary.text(
             "Timezone (e.g. auto, Europe/Berlin):",
@@ -1661,12 +1686,16 @@ def config_cmd():
     for key, label in numeric_keys:
         table.add_row(label, str(cfg[key]))
     table.add_row("Sound enabled", str(cfg["sound_enabled"]))
-    table.add_row("Distraction hotkey", cfg["hotkey_distraction"])
-    table.add_row("Quick-start hotkey", cfg.get("hotkey_quick_start", DEFAULT_CONFIG["hotkey_quick_start"]))
+    table.add_row("Distraction hotkey", shortcut_config["hotkey_distraction"])
+    table.add_row("Quick-start hotkey", shortcut_config["hotkey_quick_start"])
     table.add_row(
-        "Distraction note prompt (macOS)",
+        "Distraction note prompt",
         str(cfg.get("distraction_note_prompt", DEFAULT_CONFIG["distraction_note_prompt"])),
     )
+    if linux:
+        table.add_row("Show tray icon", str(cfg["linux"]["show_tray"]))
+        table.add_row("Open companion on session start", str(cfg["linux"]["autolaunch"]))
+        table.add_row("Desktop integration", str(cfg["linux"]["desktop_integration"]))
     table.add_row("Timezone", cfg["timezone"])
     table.add_row("Backup directory", cfg["backup_dir"] or "(default)")
     table.add_row("Compress backups", str(cfg["backup_compress"]))

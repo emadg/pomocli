@@ -1,7 +1,9 @@
 from pathlib import Path
+from copy import deepcopy
+import os
 import toml
 
-CONFIG_DIR = Path.home() / ".config" / "pomocli"
+CONFIG_DIR = Path(os.environ.get("POMOCLI_CONFIG_DIR", Path.home() / ".config" / "pomocli"))
 CONFIG_PATH = CONFIG_DIR / "config.toml"
 
 DEFAULT_CONFIG = {
@@ -19,15 +21,25 @@ DEFAULT_CONFIG = {
     "backup_max_versions": 7,
     "backup_dir": "",
     "backup_compress": True,
+    "linux": {
+        "hotkey_distraction": "CTRL+ALT+d",
+        "hotkey_quick_start": "CTRL+ALT+p",
+        "show_tray": True,
+        "autolaunch": True,
+        "desktop_integration": True,
+    },
 }
 
 
 def load_config() -> dict:
     """Read TOML config and merge with defaults for any missing keys."""
-    config = dict(DEFAULT_CONFIG)
+    config = deepcopy(DEFAULT_CONFIG)
     if CONFIG_PATH.exists():
         user_config = toml.load(CONFIG_PATH)
+        linux_config = user_config.pop("linux", {})
         config.update(user_config)
+        if isinstance(linux_config, dict):
+            config["linux"].update(linux_config)
     return config
 
 

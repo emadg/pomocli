@@ -8,20 +8,24 @@ import threading
 import sys
 import time
 import logging
+import uuid
 from .timer import PomodoroTimer, TimerState, TimerMode
 from ..db.operations import update_session, log_distraction, log_session_event
 from ..db.connection import DB_PATH
 from ..db.backup import maybe_run_automatic_backup
-from ..config import load_config
+from ..config import CONFIG_DIR, load_config
+from .protocol import receive_json
 from .macos import IdleDetector
 from .. import __build__
 
-SOCKET_PATH = Path.home() / ".config" / "pomocli" / "pomo.sock"
-PID_PATH = Path.home() / ".config" / "pomocli" / "pomo.pid"
+SOCKET_PATH = Path(os.environ.get("POMOCLI_SOCKET", CONFIG_DIR / "pomo.sock"))
+PID_PATH = CONFIG_DIR / "pomo.pid"
 
 
 def play_sound(sound_type: str):
     """Play a system sound based on event type."""
+    if not load_config().get("sound_enabled", True):
+        return
     sounds = {
         "start": "/System/Library/Sounds/Glass.aiff",
         "complete": "/System/Library/Sounds/Glass.aiff",
@@ -44,6 +48,12 @@ class DaemonServer:
         self._running = False
         self._stop_event = threading.Event()
         self._last_backup_check = 0.0
+        self._command_lock = threading.RLock()
+        self._completion_lock = threading.Lock()
+        self.daemon_instance = str(uuid.uuid4())
+        self.completion_event = None
+        self._completion_sequence = 0
+        self.pause_source = None
 
         cfg = load_config()
 
@@ -75,6 +85,7 @@ class DaemonServer:
                 log_session_event(self.timer.session_id, "idle")
                 log_session_event(self.timer.session_id, "pause", {"source": "idle"})
             self.timer.pause()
+            self.pause_source = "idle"
 
     def _extend_on_distract(self):
         """Extend timer by configured minutes when a distraction is logged."""
@@ -94,166 +105,201 @@ class DaemonServer:
     def _on_tick(self, time_left: int):
         pass
 
+    def _mark_completion(self, session_id: int) -> None:
+        with self._completion_lock:
+            self._completion_sequence += 1
+            self.completion_event = {
+                "sequence": self._completion_sequence,
+                "session_id": session_id,
+            }
+
     def _on_complete(self):
-        if self.timer.session_id:
-            log_session_event(self.timer.session_id, "complete")
-            update_session(
-                self.timer.session_id,
-                "completed",
-                self.timer.logged_focus_seconds(),
-                end_time=True,
-            )
+        session_id = self.timer.session_id
+        logged = self.timer.logged_focus_seconds()
+        if session_id:
+            log_session_event(session_id, "complete")
+            update_session(session_id, "completed", logged, end_time=True)
+            self._mark_completion(session_id)
+            self.pause_source = None
             play_sound("complete")
 
     def handle_client(self, conn: socket.socket):
         try:
-            data = conn.recv(4096).decode("utf-8")
-            if not data:
-                return
-
-            request = json.loads(data)
-            command = request.get("command")
-            args = request.get("args", {})
-
-            response = {"status": "ok"}
-
-            if command == "start":
-                # timer.start() calls stop() internally without DB writes; finalize any
-                # still-active session so it cannot remain "running" in the DB.
-                self._persist_open_session_as_stopped("superseded_by_start")
-                duration = args.get("duration", 25)
-                session_id = args.get("session_id")
-                timer_mode = args.get("timer_mode", "countdown")
-                if timer_mode == "elapsed":
-                    self.timer.start_elapsed(session_id)
-                    if session_id is not None:
-                        log_session_event(session_id, "start", {"mode": "elapsed"})
-                else:
-                    self.timer.start(duration, session_id)
-                    if session_id is not None:
-                        log_session_event(
-                            session_id, "start", {"duration_minutes": duration}
-                        )
-                play_sound("start")
-            elif command == "pause":
-                if self.timer.session_id and self.timer.state == TimerState.RUNNING:
-                    pause_source = args.get("source", "manual")
-                    log_session_event(self.timer.session_id, "pause", {"source": pause_source})
-                self.timer.pause()
-            elif command == "resume":
-                if self.timer.session_id and self.timer.state == TimerState.PAUSED:
-                    log_session_event(self.timer.session_id, "resume")
-                self.timer.resume()
-            elif command == "stop":
-                if self.timer.session_id:
-                    log_session_event(self.timer.session_id, "stop")
-                    logged = self.timer.logged_focus_seconds()
-                    update_session(
-                        self.timer.session_id, "stopped", logged, end_time=True
-                    )
-                self.timer.stop()
-            elif command == "kill":
-                if self.timer.session_id:
-                    log_session_event(self.timer.session_id, "kill")
-                    logged = self.timer.logged_focus_seconds()
-                    update_session(
-                        self.timer.session_id, "killed", logged, end_time=True
-                    )
-                self.timer.stop()
-            elif command == "complete":
-                if self.timer.mode != TimerMode.ELAPSED:
-                    response = {
-                        "status": "error",
-                        "message": "Complete is only for stopwatch (elapsed) sessions",
-                    }
-                elif self.timer.state not in (
-                    TimerState.RUNNING,
-                    TimerState.PAUSED,
-                ):
-                    response = {
-                        "status": "error",
-                        "message": "No active stopwatch session",
-                    }
-                elif not self.timer.session_id:
-                    response = {
-                        "status": "error",
-                        "message": "No active session",
-                    }
-                else:
-                    log_session_event(self.timer.session_id, "complete")
-                    update_session(
-                        self.timer.session_id,
-                        "completed",
-                        self.timer.logged_focus_seconds(),
-                        end_time=True,
-                    )
-                    play_sound("complete")
-                    self.timer.stop()
-            elif command == "distract":
-                desc = args.get("description")
-                if self.timer.session_id and self.timer.state == TimerState.RUNNING:
-                    log_distraction(self.timer.session_id, desc)
-                    self._extend_on_distract()
-                    play_sound("distract")
-                else:
-                    response = {
-                        "status": "error",
-                        "message": "No active session running",
-                    }
-            elif command == "extend":
-                if self.timer.mode == TimerMode.ELAPSED:
-                    response = {
-                        "status": "error",
-                        "message": "Not available in elapsed mode",
-                    }
-                elif self.timer.session_id and self.timer.state in (TimerState.RUNNING, TimerState.PAUSED):
-                    cfg = load_config()
-                    extend = cfg.get("distraction_extend_minutes", 0)
-                    if extend and extend > 0:
-                        log_session_event(
-                            self.timer.session_id, "extend", {"minutes": extend}
-                        )
-                        self.timer.add_time(extend, counts_as_focus=True)
-                        response["extended_by"] = extend
-                    else:
-                        response = {
-                            "status": "error",
-                            "message": "Extension time is configured to 0",
-                        }
-                else:
-                    response = {
-                        "status": "error",
-                        "message": "No active session",
-                    }
-            elif command == "status":
-                status_data = self.timer.get_status()
-                status_data["db_path"] = str(Path(DB_PATH).resolve())
-                if status_data.get("session_id"):
-                    try:
-                        from ..db.operations import get_session_task_info
-                        info = get_session_task_info(status_data["session_id"])
-                        if info:
-                            status_data.update(info)
-                    except Exception as e:
-                        logging.error(f"Failed to enrich status: {e}")
-                response["data"] = status_data
-            elif command == "ping":
-                response["data"] = "pong"
-            elif command == "shutdown":
-                self._stop_event.set()
-            else:
-                response = {"status": "error", "message": "Unknown command"}
-
+            conn.settimeout(2.0)
+            request = receive_json(conn)
+            with self._command_lock:
+                response = self._handle_command(request)
             conn.sendall(json.dumps(response).encode("utf-8"))
         except Exception as e:
             try:
-                conn.sendall(
-                    json.dumps({"status": "error", "message": str(e)}).encode("utf-8")
-                )
-            except Exception:
+                conn.sendall(json.dumps({"status": "error", "message": str(e)}).encode("utf-8"))
+            except OSError:
                 pass
         finally:
             conn.close()
+
+    def _handle_command(self, request: dict) -> dict:
+        if not isinstance(request, dict):
+            raise ValueError("Request must be a JSON object")
+        command = request.get("command")
+        args = request.get("args", {})
+        if not isinstance(args, dict):
+            raise ValueError("Command args must be an object")
+        if command in {"start", "pause", "resume", "stop", "kill", "complete", "distract", "extend"}:
+            actual = {
+                "expected_session_id": self.timer.session_id,
+                "expected_state": self.timer.state.value,
+                "expected_pause_source": self.pause_source,
+                "expected_daemon_instance": self.daemon_instance,
+            }
+            for key, value in actual.items():
+                if key in args and args[key] != value:
+                    return {"status": "error", "message": "Session changed; refresh before retrying"}
+        response = {"status": "ok"}
+
+        if command == "start":
+            self.pause_source = None
+            # timer.start() calls stop() internally without DB writes; finalize any
+            # still-active session so it cannot remain "running" in the DB.
+            self._persist_open_session_as_stopped("superseded_by_start")
+            duration = args.get("duration", 25)
+            session_id = args.get("session_id")
+            timer_mode = args.get("timer_mode", "countdown")
+            if timer_mode == "elapsed":
+                self.timer.start_elapsed(session_id)
+                if session_id is not None:
+                    log_session_event(session_id, "start", {"mode": "elapsed"})
+            else:
+                self.timer.start(duration, session_id)
+                if session_id is not None:
+                    log_session_event(
+                        session_id, "start", {"duration_minutes": duration}
+                    )
+            play_sound("start")
+        elif command == "pause":
+            if self.timer.session_id and self.timer.state == TimerState.RUNNING:
+                pause_source = args.get("source", "manual")
+                if pause_source == "idle":
+                    log_session_event(self.timer.session_id, "idle")
+                log_session_event(self.timer.session_id, "pause", {"source": pause_source})
+                self.pause_source = pause_source
+            self.timer.pause()
+        elif command == "resume":
+            if self.timer.session_id and self.timer.state == TimerState.PAUSED:
+                log_session_event(self.timer.session_id, "resume")
+            self.timer.resume()
+            self.pause_source = None
+        elif command == "stop":
+            if self.timer.session_id:
+                log_session_event(self.timer.session_id, "stop")
+                logged = self.timer.logged_focus_seconds()
+                update_session(
+                    self.timer.session_id, "stopped", logged, end_time=True
+                )
+            self.timer.stop()
+            self.pause_source = None
+        elif command == "kill":
+            if self.timer.session_id:
+                log_session_event(self.timer.session_id, "kill")
+                logged = self.timer.logged_focus_seconds()
+                update_session(
+                    self.timer.session_id, "killed", logged, end_time=True
+                )
+            self.timer.stop()
+            self.pause_source = None
+        elif command == "complete":
+            if self.timer.mode != TimerMode.ELAPSED:
+                response = {
+                    "status": "error",
+                    "message": "Complete is only for stopwatch (elapsed) sessions",
+                }
+            elif self.timer.state not in (
+                TimerState.RUNNING,
+                TimerState.PAUSED,
+            ):
+                response = {
+                    "status": "error",
+                    "message": "No active stopwatch session",
+                }
+            elif not self.timer.session_id:
+                response = {
+                    "status": "error",
+                    "message": "No active session",
+                }
+            else:
+                log_session_event(self.timer.session_id, "complete")
+                update_session(
+                    self.timer.session_id,
+                    "completed",
+                    self.timer.logged_focus_seconds(),
+                    end_time=True,
+                )
+                self._mark_completion(self.timer.session_id)
+                play_sound("complete")
+                self.timer.stop()
+                self.pause_source = None
+        elif command == "distract":
+            desc = args.get("description")
+            if self.timer.session_id and self.timer.state == TimerState.RUNNING:
+                log_distraction(self.timer.session_id, desc)
+                self._extend_on_distract()
+                play_sound("distract")
+            else:
+                response = {
+                    "status": "error",
+                    "message": "No active session running",
+                }
+        elif command == "extend":
+            if self.timer.mode == TimerMode.ELAPSED:
+                response = {
+                    "status": "error",
+                    "message": "Not available in elapsed mode",
+                }
+            elif self.timer.session_id and self.timer.state in (TimerState.RUNNING, TimerState.PAUSED):
+                cfg = load_config()
+                extend = cfg.get("distraction_extend_minutes", 0)
+                if extend and extend > 0:
+                    log_session_event(
+                        self.timer.session_id, "extend", {"minutes": extend}
+                    )
+                    self.timer.add_time(extend, counts_as_focus=True)
+                    response["extended_by"] = extend
+                else:
+                    response = {
+                        "status": "error",
+                        "message": "Extension time is configured to 0",
+                    }
+            else:
+                response = {
+                    "status": "error",
+                    "message": "No active session",
+                }
+        elif command == "status":
+            status_data = self.timer.get_status()
+            status_data["db_path"] = str(Path(DB_PATH).resolve())
+            status_data["daemon_instance"] = self.daemon_instance
+            with self._completion_lock:
+                status_data["completion_event"] = self.completion_event
+            status_data["pause_source"] = (
+                self.pause_source if self.timer.state == TimerState.PAUSED else None
+            )
+            if status_data.get("session_id"):
+                try:
+                    from ..db.operations import get_session_task_info
+                    info = get_session_task_info(status_data["session_id"])
+                    if info:
+                        status_data.update(info)
+                except Exception as e:
+                    logging.error(f"Failed to enrich status: {e}")
+            response["data"] = status_data
+        elif command == "ping":
+            response["data"] = "pong"
+        elif command == "shutdown":
+            self._stop_event.set()
+        else:
+            response = {"status": "error", "message": "Unknown command"}
+
+        return response
 
     def start(self):
         SOCKET_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -261,6 +307,7 @@ class DaemonServer:
             SOCKET_PATH.unlink()
 
         # Write PID file so CLI can check if daemon is alive
+        PID_PATH.parent.mkdir(parents=True, exist_ok=True)
         PID_PATH.write_text(str(os.getpid()))
 
         log_level = os.environ.get("POMO_LOG_LEVEL", "INFO").upper()
@@ -273,6 +320,7 @@ class DaemonServer:
 
         self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.server.bind(str(SOCKET_PATH))
+        SOCKET_PATH.chmod(0o600)
         self.server.listen(5)
         self.server.settimeout(1.0)  # Allow periodic check of stop event
         self._running = True
