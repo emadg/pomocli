@@ -3,6 +3,7 @@
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QQuickItem>
+#include <QQuickItemGrabResult>
 #include <QQuickWindow>
 #include <QScopedPointer>
 #include <QSignalSpy>
@@ -59,6 +60,17 @@ class TimerViewsTest final : public QObject
             qPrintable(QStringLiteral("%1 outside %2x%3: %4,%5 %6x%7")
                 .arg(QString::fromLatin1(name)).arg(root->width()).arg(root->height())
                 .arg(bounds.x()).arg(bounds.y()).arg(bounds.width()).arg(bounds.height())));
+    }
+
+    QImage grabItem(QQuickItem *item)
+    {
+        const auto result = item->grabToImage();
+        if (!result)
+            return {};
+        QSignalSpy ready(result.data(), &QQuickItemGrabResult::ready);
+        if (result->image().isNull() && !ready.wait(2000))
+            return {};
+        return result->image();
     }
 
 private slots:
@@ -290,20 +302,22 @@ private slots:
         capture(window, QStringLiteral("active-session-hierarchy"));
     }
 
-    void outlinedDisconnect_data()
+    void transparentDisconnect_data()
     {
         QTest::addColumn<bool>("dark");
-        QTest::newRow("disconnected-light") << false;
-        QTest::newRow("disconnected-dark") << true;
+        QTest::addColumn<QColor>("background");
+        QTest::newRow("disconnected-light") << false << QColor("#f4f4f4");
+        QTest::newRow("disconnected-dark") << true << QColor("#232629");
+        QTest::newRow("disconnected-color") << true << QColor("#377a97");
     }
 
-    void outlinedDisconnect()
+    void transparentDisconnect()
     {
         QFETCH(bool, dark);
+        QFETCH(QColor, background);
         QQuickWindow window;
-        const QColor background(dark ? "#232629" : "#f4f4f4");
         QScopedPointer<QQuickItem> item(create(QStringLiteral("DesktopTimer.qml"), {
-            {"connected", false}, {"foregroundColor", QColor(dark ? "#eff0f1" : "#232629")},
+            {"connected", true}, {"foregroundColor", QColor(dark ? "#eff0f1" : "#232629")},
             {"surfaceColor", background},
         }));
         QVERIFY(item);
@@ -312,27 +326,67 @@ private slots:
         QTest::qWait(30);
         auto *glyph = item->findChild<QQuickItem *>(QStringLiteral("idleGlyph"));
         QVERIFY(glyph);
-        auto *outline = glyph->findChild<QQuickItem *>(QStringLiteral("disconnectSlash"));
-        QVERIFY(outline);
-        auto *stroke = outline->findChild<QQuickItem *>(QStringLiteral("disconnectSlashStroke"));
+        const QImage original = grabItem(glyph);
+        QVERIFY(!original.isNull());
+        item->setProperty("connected", false);
+        QTest::qWait(60);
+        auto *stroke = glyph->findChild<QQuickItem *>(QStringLiteral("disconnectSlashStroke"));
         QVERIFY(stroke);
-        QVERIFY(outline->width() > glyph->width() * 1.24);
-        const QImage image = window.grabWindow();
-        const QRect bounds = glyph->mapRectToItem(item.data(), glyph->boundingRect()).toAlignedRect().intersected(image.rect());
+        const QImage image = grabItem(glyph);
+        QVERIFY(!image.isNull());
+        QVERIFY(image.hasAlphaChannel());
+        QCOMPARE(image.size(), original.size());
         const QColor red = stroke->property("color").value<QColor>();
-        int blackPixels = 0;
+        QList<QPoint> erased;
+        int gapAbove = 0;
+        int gapBelow = 0;
         int redPixels = 0;
-        for (int y = bounds.top(); y <= bounds.bottom(); ++y)
-            for (int x = bounds.left(); x <= bounds.right(); ++x) {
+        int outsidePixels = 0;
+        int changedOutside = 0;
+        const qreal clearRadius = glyph->property("slashThickness").toReal() / 2 + glyph->property("slashGap").toReal();
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x) {
                 const QColor pixel = image.pixelColor(x, y);
-                if (qAbs(pixel.red() - 17) < 5 && qAbs(pixel.green() - 19) < 5 && qAbs(pixel.blue() - 21) < 5)
-                    ++blackPixels;
-                if (qAbs(pixel.red() - red.red()) < 5 && qAbs(pixel.green() - red.green()) < 5 && qAbs(pixel.blue() - red.blue()) < 5)
+                const int originalAlpha = original.pixelColor(x, y).alpha();
+                const qreal distance = qAbs(x + y + 1 - (image.width() + image.height()) / 2.0) / qSqrt(2.0);
+                if (distance > clearRadius + 2) {
+                    if (originalAlpha > 240 || pixel.alpha() > 240)
+                        ++outsidePixels;
+                    if ((originalAlpha > 240 && pixel.alpha() < 10) || (originalAlpha < 10 && pixel.alpha() > 240))
+                        ++changedOutside;
+                }
+                if (originalAlpha > 240 && pixel.alpha() < 10) {
+                    erased.append(QPoint(x, y));
+                    if (x + y < (image.width() + image.height()) / 2)
+                        ++gapAbove;
+                    else
+                        ++gapBelow;
+                }
+                if (pixel.alpha() > 200 && qAbs(pixel.red() - red.red()) < 5
+                    && qAbs(pixel.green() - red.green()) < 5 && qAbs(pixel.blue() - red.blue()) < 5)
                     ++redPixels;
             }
-        QVERIFY2(blackPixels > 100, "Disconnected slash needs a visible dark outline");
+        QVERIFY2(gapAbove > 50 && gapBelow > 50, "Both sides of the slash must erase the logo's alpha");
+        QVERIFY2(changedOutside < outsidePixels * 0.02, "The cutout must preserve the logo's shape outside the slash");
         QVERIFY2(redPixels > 150, "Disconnected slash needs a visible red stroke");
         capture(window, QString::fromLatin1(QTest::currentDataTag()));
+        const QString directory = qEnvironmentVariable("POMO_WIDGET_PREVIEW_DIR");
+        if (!directory.isEmpty()) {
+            QVERIFY(image.save(directory + u'/' + QString::fromLatin1(QTest::currentDataTag()) + QStringLiteral("-alpha.png")));
+            QVERIFY(original.save(directory + u'/' + QString::fromLatin1(QTest::currentDataTag()) + QStringLiteral("-original-alpha.png")));
+        }
+        const QImage composited = window.grabWindow();
+        const QPointF origin = glyph->mapToItem(item.data(), QPointF());
+        const QPoint gap = erased.at(erased.size() / 2);
+        const QColor through = composited.pixelColor(qRound(origin.x()) + gap.x(), qRound(origin.y()) + gap.y());
+        QVERIFY(qAbs(through.red() - background.red()) < 5 && qAbs(through.green() - background.green()) < 5
+            && qAbs(through.blue() - background.blue()) < 5);
+        item->setProperty("connected", true);
+        QTest::qWait(30);
+        const QImage restored = grabItem(glyph);
+        QVERIFY(!restored.isNull());
+        for (const QPoint &point : erased)
+            QVERIFY(restored.pixelColor(point).alpha() > 240);
     }
 
     void lightAndDark()

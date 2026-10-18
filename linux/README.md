@@ -100,10 +100,10 @@ is installed alongside the widget, so no global QML import-path setting is
 needed. Compile it on the target distribution against that system's Qt6.
 
 The idle panel shows just the original icon at a modest size. A diagonal red
-slash with a dark outline marks a missing connection to the companion or Python
-daemon. Running and paused sessions use a smaller icon beside a countdown or
-stopwatch with stable width between ticks. Narrow vertical panels fall back to the icon when the timer
-would not fit.
+slash with a transparent gap cut out of the logo marks a missing connection to
+the companion or Python daemon. Running and paused sessions use a smaller icon
+beside a countdown or stopwatch with stable width between ticks. Narrow vertical
+panels fall back to the icon when the timer would not fit.
 
 On the desktop, a tiny widget shows only the icon. More space reveals **Pomo**
 and then **Ready to focus! 🍅👀** while idle. During a session, the timer always

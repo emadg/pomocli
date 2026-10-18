@@ -24,8 +24,24 @@ file(READ "${POMO_STATUS_ICON}" POMO_STATUS_SVG)
 string(REPLACE "fill=\"currentColor\"" "fill=\"#eff0f1\"" POMO_LIGHT_STATUS_SVG "${POMO_STATUS_SVG}")
 set(POMO_LIGHT_STATUS_ICON "${CMAKE_CURRENT_BINARY_DIR}/package/contents/images/pomocli-status-icon-light.svg")
 file(WRITE "${POMO_LIGHT_STATUS_ICON}" "${POMO_LIGHT_STATUS_SVG}")
+# Canvas uses the SVG's intrinsic dimensions. Bound its decoded image size
+# instead of retaining the full 981x833 source bitmap for a small glyph.
+set(POMO_CANVAS_STATUS_ICONS)
+foreach(contrast IN ITEMS dark light)
+    if(contrast STREQUAL "light")
+        set(POMO_CANVAS_STATUS_SVG "${POMO_LIGHT_STATUS_SVG}")
+    else()
+        set(POMO_CANVAS_STATUS_SVG "${POMO_STATUS_SVG}")
+    endif()
+    string(REGEX REPLACE "width=\"[0-9]+\" height=\"[0-9]+\"" "width=\"256\" height=\"217\""
+        POMO_CANVAS_STATUS_SVG "${POMO_CANVAS_STATUS_SVG}")
+    set(POMO_CANVAS_STATUS_ICON "${CMAKE_CURRENT_BINARY_DIR}/package/contents/images/pomocli-status-icon-${contrast}-canvas.svg")
+    file(WRITE "${POMO_CANVAS_STATUS_ICON}" "${POMO_CANVAS_STATUS_SVG}")
+    list(APPEND POMO_CANVAS_STATUS_ICONS "${POMO_CANVAS_STATUS_ICON}")
+endforeach()
 install(DIRECTORY package/ DESTINATION "${POMO_PLASMOID_DIR}")
-install(FILES "${POMO_STATUS_ICON}" "${POMO_LIGHT_STATUS_ICON}" DESTINATION "${POMO_PLASMOID_DIR}/contents/images")
+install(FILES "${POMO_STATUS_ICON}" "${POMO_LIGHT_STATUS_ICON}" ${POMO_CANVAS_STATUS_ICONS}
+    DESTINATION "${POMO_PLASMOID_DIR}/contents/images")
 # The widget manager reads KPlugin.Icon, independently of the panel's QML.
 # Give the widget its own icon so widget-only installs never depend on the
 # desktop companion's launcher icon or an older cached image under that name.
