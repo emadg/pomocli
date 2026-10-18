@@ -18,15 +18,19 @@ QQC2.AbstractButton {
     readonly property real edge: Kirigami.Units.smallSpacing
     readonly property real idleExtent: 0.85 * Math.max(16, Math.min(48, (vertical ? width : height) - edge * 2))
     readonly property bool showVerticalTimer: width >= verticalMetrics.advanceWidth + edge * 2
-    readonly property real timerFontSize: Math.max(9, Math.min(Math.max(12, Kirigami.Theme.defaultFont.pixelSize),
-        Math.max(1, height - edge * 2) * 100 / Math.max(1, panelFontMetrics.height)))
+    readonly property real sessionPadding: vertical ? edge : Math.min(edge, Math.max(1, (height - 20) / 4))
+    readonly property real sessionIconSize: vertical ? 16 : Math.max(8, Math.min(16, Math.round(height * 0.28)))
+    readonly property real timerFontSize: vertical
+        ? Math.max(9, Math.min(24, (width - edge * 2) * 100 / Math.max(1, formatMetrics.advanceWidth)))
+        : Math.max(9, Math.min(28,
+            Math.max(1, height - sessionPadding * 2 - sessionIconSize) * 100 / Math.max(1, panelFontMetrics.height)))
     implicitWidth: vertical ? Kirigami.Units.gridUnit * 3
-        : activeSession ? sessionRow.implicitWidth + edge * 2 : Math.max(24, height)
-    implicitHeight: vertical ? (activeSession && showVerticalTimer ? sessionColumn.implicitHeight + edge * 2 : Math.max(24, width))
+        : activeSession ? sessionColumn.implicitWidth + sessionPadding * 2 : Math.max(24, height)
+    implicitHeight: vertical ? (activeSession && showVerticalTimer ? sessionColumn.implicitHeight + sessionPadding * 2 : Math.max(24, width))
         : Kirigami.Units.gridUnit * 2
-    Layout.minimumWidth: vertical ? 24 : activeSession ? sessionRow.implicitWidth + edge * 2 : 24
+    Layout.minimumWidth: vertical ? 24 : activeSession ? sessionColumn.implicitWidth + sessionPadding * 2 : 24
     Layout.preferredWidth: implicitWidth
-    Layout.minimumHeight: vertical && activeSession && showVerticalTimer ? sessionColumn.implicitHeight + edge * 2 : 24
+    Layout.minimumHeight: vertical && activeSession && showVerticalTimer ? sessionColumn.implicitHeight + sessionPadding * 2 : 24
     Layout.preferredHeight: implicitHeight
     padding: 0
     focusPolicy: Qt.StrongFocus
@@ -45,43 +49,34 @@ QQC2.AbstractButton {
             width: root.idleExtent
             height: width
         }
-        RowLayout {
-            id: sessionRow
+        ColumnLayout {
+            id: sessionColumn
             anchors.centerIn: parent
-            visible: root.activeSession && !root.vertical
-            spacing: root.edge
-            TimerIcon { source: root.iconSource; color: root.foregroundColor }
+            visible: root.activeSession && (!root.vertical || root.showVerticalTimer)
+            spacing: 0
+            TimerIcon {
+                objectName: "sessionGlyph"
+                source: root.iconSource
+                color: root.foregroundColor
+                implicitWidth: root.sessionIconSize
+                implicitHeight: implicitWidth
+                Layout.alignment: Qt.AlignHCenter
+            }
             Text {
-                objectName: "horizontalTimer"
+                objectName: "panelTimer"
                 text: root.timeText
                 textFormat: Text.PlainText
                 color: root.foregroundColor
                 font.family: "monospace"
                 font.pixelSize: root.timerFontSize
+                font.letterSpacing: 0
                 font.bold: !root.paused
+                fontSizeMode: Text.Fit
+                minimumPixelSize: 9
                 opacity: root.paused ? 0.65 : 1
-                Layout.minimumWidth: timerMetrics.width
-            }
-        }
-        ColumnLayout {
-            id: sessionColumn
-            anchors.centerIn: parent
-            visible: root.activeSession && root.vertical && root.showVerticalTimer
-            spacing: 0
-            TimerIcon {
-                source: root.iconSource
-                color: root.foregroundColor
-                Layout.alignment: Qt.AlignHCenter
-            }
-            Text {
-                objectName: "verticalTimer"
-                text: root.timeText
-                textFormat: Text.PlainText
-                color: root.foregroundColor
-                font.family: "monospace"
-                font.pixelSize: Math.min(Math.max(12, Kirigami.Theme.defaultFont.pixelSize),
-                    Math.max(9, (root.width - root.edge * 2) / Math.max(5, text.length) / 0.65))
-                opacity: root.paused ? 0.65 : 1
+                horizontalAlignment: Text.AlignHCenter
+                Layout.minimumWidth: timerMetrics.advanceWidth
+                Layout.maximumWidth: timerMetrics.advanceWidth
                 Layout.alignment: Qt.AlignHCenter
             }
         }
@@ -92,12 +87,23 @@ QQC2.AbstractButton {
         font.family: "monospace"
         font.pixelSize: root.timerFontSize
         font.bold: true
+        font.letterSpacing: 0
         text: "0".repeat(Math.max(5, root.timeText.length))
     }
     TextMetrics {
         id: verticalMetrics
         font.family: "monospace"
         font.pixelSize: 9
+        font.bold: true
+        font.letterSpacing: 0
+        text: "0".repeat(Math.max(5, root.timeText.length))
+    }
+    TextMetrics {
+        id: formatMetrics
+        font.family: "monospace"
+        font.pixelSize: 100
+        font.bold: true
+        font.letterSpacing: 0
         text: "0".repeat(Math.max(5, root.timeText.length))
     }
     FontMetrics {

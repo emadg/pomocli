@@ -152,7 +152,7 @@ private slots:
         QVERIFY(item);
         display(window, item.data(), QSize(40, 40));
         QVERIFY(item->findChild<QQuickItem *>(QStringLiteral("idleGlyph"))->isVisible());
-        QVERIFY(!item->findChild<QQuickItem *>(QStringLiteral("horizontalTimer"))->isVisible());
+        QVERIFY(!item->findChild<QQuickItem *>(QStringLiteral("panelTimer"))->isVisible());
         QVERIFY(item->property("idleExtent").toReal() > 16);
         const qreal previousExtent = 40 - item->property("edge").toReal() * 2;
         QVERIFY(qAbs(item->property("idleExtent").toReal() / previousExtent - 0.85) < 0.001);
@@ -169,7 +169,7 @@ private slots:
         window.resize(qCeil(item->width()), 40);
         QTest::qWait(30);
         const qreal width = item->implicitWidth();
-        fits(item.data(), "horizontalTimer");
+        fits(item.data(), "panelTimer");
         item->setProperty("timeText", "24:58");
         item->setProperty("paused", true);
         QTest::qWait(30);
@@ -181,13 +181,13 @@ private slots:
         item->setWidth(item->implicitWidth());
         window.resize(qCeil(item->width()), 40);
         QTest::qWait(30);
-        fits(item.data(), "horizontalTimer");
+        fits(item.data(), "panelTimer");
         capture(window, QStringLiteral("panel-long-stopwatch"));
         item->setProperty("vertical", true);
         item->setSize(QSizeF(48, item->implicitHeight()));
         window.resize(48, qCeil(item->height()));
         QTest::qWait(30);
-        fits(item.data(), "verticalTimer");
+        fits(item.data(), "panelTimer");
         capture(window, QStringLiteral("panel-vertical"));
     }
 
@@ -201,6 +201,55 @@ private slots:
         item->forceActiveFocus();
         QTest::keyClick(&window, Qt::Key_Space);
         QCOMPARE(clicked.count(), 1);
+    }
+
+    void stackedPanel_data()
+    {
+        QTest::addColumn<int>("height");
+        QTest::addColumn<QString>("time");
+        QTest::addColumn<bool>("dark");
+        QTest::newRow("panel-stack-24") << 24 << QStringLiteral("24:56") << false;
+        QTest::newRow("panel-stack-32") << 32 << QStringLiteral("24:56") << false;
+        QTest::newRow("panel-stack-40") << 40 << QStringLiteral("24:56") << false;
+        QTest::newRow("panel-stack-48") << 48 << QStringLiteral("24:56") << true;
+        QTest::newRow("panel-stack-hour") << 48 << QStringLiteral("1:00:00") << true;
+        QTest::newRow("panel-stack-long") << 48 << QStringLiteral("123:45:59") << true;
+        QTest::newRow("panel-stack-64") << 64 << QStringLiteral("24:56") << true;
+    }
+
+    void stackedPanel()
+    {
+        QFETCH(int, height);
+        QFETCH(QString, time);
+        QFETCH(bool, dark);
+        QQuickWindow window;
+        QScopedPointer<QQuickItem> item(create(QStringLiteral("PanelTimer.qml"), {
+            {"connected", true}, {"activeSession", true}, {"timeText", time},
+            {"foregroundColor", QColor(dark ? "#eff0f1" : "#232629")},
+        }));
+        QVERIFY(item);
+        display(window, item.data(), QSize(160, height));
+        window.setColor(QColor(dark ? "#232629" : "#f4f4f4"));
+        item->setWidth(qCeil(item->implicitWidth()));
+        window.resize(qCeil(item->width()), height);
+        QTest::qWait(30);
+        auto *glyph = item->findChild<QQuickItem *>(QStringLiteral("sessionGlyph"));
+        auto *timer = item->findChild<QQuickItem *>(QStringLiteral("panelTimer"));
+        QVERIFY(glyph);
+        QVERIFY(timer);
+        const QRectF glyphBounds = glyph->mapRectToItem(item.data(), glyph->boundingRect());
+        const QRectF timerBounds = timer->mapRectToItem(item.data(), timer->boundingRect());
+        QVERIFY(glyphBounds.bottom() <= timerBounds.top() + 1);
+        QVERIFY(qAbs(glyphBounds.center().x() - timerBounds.center().x()) < 1);
+        fits(item.data(), "sessionGlyph");
+        fits(item.data(), "panelTimer");
+        QVERIFY(timer->property("contentWidth").toReal() <= timer->width() + 1);
+        if (height >= 48) {
+            const QJSValue fontInfo = timer->property("fontInfo").value<QJSValue>();
+            QVERIFY2(fontInfo.property(QStringLiteral("pixelSize")).toNumber() >= 20,
+                "Use the panel's height for a larger, readable timer");
+        }
+        capture(window, QString::fromLatin1(QTest::currentDataTag()));
     }
 
     void narrowVerticalPanel_data()
@@ -222,8 +271,8 @@ private slots:
         }));
         QVERIFY(item);
         display(window, item.data(), QSize(width, 48));
-        QCOMPARE(item->findChild<QQuickItem *>(QStringLiteral("verticalTimer"))->isVisible(), showTimer);
-        fits(item.data(), showTimer ? "verticalTimer" : "idleGlyph");
+        QCOMPARE(item->findChild<QQuickItem *>(QStringLiteral("panelTimer"))->isVisible(), showTimer);
+        fits(item.data(), showTimer ? "panelTimer" : "idleGlyph");
         capture(window, QString::fromLatin1(QTest::currentDataTag()));
     }
 
