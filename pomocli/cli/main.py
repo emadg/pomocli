@@ -214,6 +214,8 @@ def daemon_start_cmd(
 
     ok, msg = start_daemon_background()
     if ok:
+        if sys.platform.startswith("linux"):
+            _launch_timer_app()
         console.print(f"[bold green]{msg}[/bold green]")
     else:
         console.print(f"[bold yellow]{msg}[/bold yellow]")
@@ -245,6 +247,8 @@ def daemon_restart_cmd():
 
     ok, msg = start_daemon_background()
     if ok:
+        if sys.platform.startswith("linux"):
+            _launch_timer_app()
         console.print(f"[bold green]{msg}[/bold green]")
     else:
         console.print(f"[bold yellow]{msg}[/bold yellow]")

@@ -93,6 +93,8 @@ def test_daemon_start_help_shows_attach():
 
 
 def test_daemon_start_background_mocked(mocker):
+    launcher = mocker.patch("pomocli.cli.main._launch_timer_app")
+    mocker.patch("pomocli.cli.main.sys.platform", "linux")
     mocker.patch("pomocli.cli.main.cli_db_path", return_value="/tmp/test.db")
     mocker.patch(
         "pomocli.cli.main.start_daemon_background",
@@ -103,6 +105,22 @@ def test_daemon_start_background_mocked(mocker):
     assert "Database:" in result.stdout
     assert "/tmp/test.db" in result.stdout
     assert "Daemon started." in result.stdout
+    launcher.assert_called_once_with()
+
+
+@pytest.mark.parametrize("command", ["start", "restart"])
+@pytest.mark.parametrize("platform,ok,launches", [
+    ("linux", True, True), ("linux", False, False), ("darwin", True, False),
+])
+def test_daemon_commands_launch_linux_frontend_after_success(mocker, command, platform, ok, launches):
+    mocker.patch("pomocli.cli.main.cli_db_path", return_value="/tmp/test.db")
+    mocker.patch("pomocli.cli.main.sys.platform", platform)
+    mocker.patch("pomocli.cli.main.stop_daemon", return_value=(True, "Daemon stopped."))
+    mocker.patch("pomocli.cli.main.start_daemon_background", return_value=(ok, "Daemon result."))
+    launcher = mocker.patch("pomocli.cli.main._launch_timer_app")
+    result = runner.invoke(app, ["daemon", command])
+    assert result.exit_code == (0 if ok else 1)
+    assert launcher.call_count == int(launches)
 
 
 def test_daemon_stop_mocked(mocker):

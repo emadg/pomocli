@@ -172,11 +172,37 @@ Pomocli can automatically back up your database using the SQLite backup API (ens
 - **Compression:** Backups are gzipped by default (`.db.gz`). To restore, just unzip it: `gunzip -c pomocli-YYYYMMDD-HHMMSS.db.gz > restored.db`.
 - **Rotation:** Old backups are automatically deleted so only the newest `backup_max_versions` remain.
 
+## How the app fits together
+
+The Python daemon runs the timer. The CLI and optional desktop apps control
+that same timer through a local Unix socket. SQLite stores session history;
+the CLI also reads and manages that history for reports and session commands.
+
+```mermaid
+flowchart TB
+    CLI["pomo CLI<br/>Commands, reports and dashboard"]
+    Core["Python daemon<br/>Timer and active session"]
+    Mac["macOS menu bar app<br/>Swift"]
+    Linux["Linux desktop companion<br/>pomo-tray, Rust"]
+    Widgets["KDE panel and desktop widgets"]
+    DB[("SQLite<br/>Session history")]
+
+    CLI <-->|Unix socket| Core
+    Mac <-->|Unix socket| Core
+    Linux <-->|Unix socket| Core
+    Linux <-->|D-Bus| Widgets
+    Core <-->|Session data| DB
+```
+
+Desktop apps are optional; the CLI and daemon work on their own. See the
+[Linux components and process lifetimes](linux/README.md#components-and-processes)
+for the widget connection and dialogs.
+
 ## Linux desktop companion
 
 The optional Linux companion adds tray controls, quick start, desktop shortcuts,
-notifications, and idle/lock/suspend auto-pause. A separate Plasma 6 panel widget
-keeps the timer visible beside its icon on KDE, including Wayland sessions.
+notifications, and idle/lock/suspend auto-pause. A separate Plasma 6 widget
+keeps the timer visible in the panel or on the desktop, including Wayland sessions.
 
 The resident companion is Rust and communicates directly with the existing
 Python daemon. GTK4 dialogs run only when opened. Other desktops can use the
@@ -231,81 +257,3 @@ POMOCLI_DB_PATH=./demo.db uv run pomo dash
 ```
 
 The script prints a reminder if `POMOCLI_DB_PATH` is unset.
-
-
-Component diagram for the app:
-
-```mermaid
-flowchart TB
-  subgraph clients["Clients"]
-    CLI["cli/main.py<br/>Typer `pomo`"]
-    SwiftApp["macOS PomoCLITimer<br/>(Swift)"]
-  end
-
-  subgraph daemon_pkg["pomocli.daemon"]
-    PyClient["client.py<br/>DaemonClient"]
-    Server["server.py<br/>DaemonServer"]
-    Timer["timer.py<br/>PomodoroTimer<br/>(countdown + elapsed)"]
-    Idle["macos.py<br/>IdleDetector"]
-  end
-
-  subgraph ui_pkg["pomocli.ui"]
-    Dash["dashboard.py<br/>(Textual)"]
-    Reports["reports.py<br/>(Rich)"]
-    Logo["logo.py"]
-  end
-
-  subgraph metrics_pkg["pomocli.metrics"]
-    FocusM["focus.py<br/>block + attention rates"]
-  end
-
-  subgraph data_pkg["pomocli.db"]
-    Conn["connection.py + schema.sql"]
-    Ops["operations.py"]
-    Backup["backup.py"]
-  end
-
-  subgraph shared["Shared"]
-    Config["config/<br/>config.toml"]
-    TimeUtil["time_util.py"]
-    Git["utils/git.py"]
-  end
-
-  Sock["Unix socket<br/>~/.config/pomocli/pomo.sock"]
-  SQLite[("SQLite<br/>pomocli.db")]
-
-  CLI --> PyClient
-  CLI --> Ops
-  CLI --> Conn
-  CLI --> Backup
-  CLI --> Config
-  CLI --> Git
-  CLI --> Reports
-  CLI --> Dash
-  CLI --> Logo
-  CLI --> FocusM
-
-  Dash --> PyClient
-
-  SwiftApp --> Sock
-
-  PyClient <-->|JSON over AF_UNIX| Sock
-  Server <-->|listen / handle| Sock
-  Server --> Timer
-  Server --> Ops
-  Server --> Backup
-  Server --> Config
-  Server --> Idle
-  Server -.->|DB path only| Conn
-
-  Ops --> Conn
-  Ops --> TimeUtil
-  Reports --> Conn
-  Reports --> TimeUtil
-  Reports --> FocusM
-  FocusM --> Ops
-  Backup --> SQLite
-  Conn --> SQLite
-
-  Timer -.->|session lifecycle callbacks| Server
-```
