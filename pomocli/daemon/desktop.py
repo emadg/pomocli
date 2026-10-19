@@ -15,7 +15,11 @@ def launch_linux_companion() -> None:
         return
     binary = shutil.which("pomo-tray")
     if binary is None:
-        return
+        # A graphical login can omit the user-local bin directory from PATH.
+        local = Path.home() / ".local" / "bin" / "pomo-tray"
+        if not local.is_file() or not os.access(local, os.X_OK):
+            return
+        binary = str(local)
     env = dict(os.environ)
     entrypoint = Path(sys.argv[0]).resolve()
     if "POMOCLI_BIN" not in env and entrypoint.name == "pomo" and entrypoint.is_file():

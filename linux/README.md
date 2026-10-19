@@ -77,9 +77,13 @@ and graphics environment.
 ### Optional KDE panel widget
 
 The widget needs the native companion installed above and running as well as
-the Python daemon. If it says **Companion not running**, open **PomoCLI Desktop**
-from your application launcher. Starting only `pomo daemon start` does not start
-the companion.
+the Python daemon. Run `pomo daemon start` to start both; this also restores the
+companion when the daemon is already running. Linux `pomo daemon restart` and
+`pomo start` launch the companion too, unless `[linux] autolaunch = false`.
+If it says **Companion not running**, you can also open **PomoCLI Desktop**
+from your application launcher. The CLI checks `~/.local/bin/pomo-tray` when
+the graphical login's `PATH` does not include that directory. Without the
+optional companion installed, the CLI and daemon still work normally.
 
 The widget requires Plasma 6, a C++ compiler, CMake, and Qt6 development files.
 It does not link KDE private libraries. Install the compiler even when building
@@ -139,7 +143,9 @@ make autostart-disable
 
 These commands manage only
 `$XDG_CONFIG_HOME/autostart/org.pomocli.Desktop.desktop` (default `~/.config`).
-Use the same `PREFIX` as installation. Remove the widget from your panel before
+They start the companion at login; start the Python core with
+`pomo daemon start` if it is not already running. Use the same `PREFIX` as
+installation. Remove the widget from your panel before
 uninstalling its files:
 
 ```sh
@@ -196,7 +202,8 @@ hotkey_quick_start = "CTRL+ALT+p"
 ```
 
 Keep shared settings before `[linux]`; TOML keys after that heading belong to
-the Linux table. `autolaunch` controls companion launch from `pomo start`.
+the Linux table. `autolaunch` controls companion launch from `pomo start`,
+`pomo daemon start`, and `pomo daemon restart` (background mode).
 `desktop_integration` controls automatic desktop-event monitoring and portal
 shortcuts. Set `show_tray = false` when using the KDE widget alone. Login
 autostart remains a separate opt-in setting.

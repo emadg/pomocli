@@ -165,15 +165,34 @@ def test_optional_linux_launcher(mocker):
     assert popen.call_count == 1
 
 
-def test_missing_or_failed_companion_does_not_break_cli(mocker):
+def test_missing_or_failed_companion_does_not_break_cli(mocker, tmp_path):
     from pomocli.daemon.desktop import launch_linux_companion
     mocker.patch("pomocli.daemon.desktop.load_config", return_value={})
+    mocker.patch("pomocli.daemon.desktop.Path.home", return_value=tmp_path)
     which = mocker.patch("pomocli.daemon.desktop.shutil.which", return_value=None)
     popen = mocker.patch("pomocli.daemon.desktop.subprocess.Popen", side_effect=OSError("not executable"))
     launch_linux_companion()
     popen.assert_not_called()
     which.return_value = "/opt/pomo-tray"
     launch_linux_companion()
+
+
+def test_linux_launcher_finds_user_install_without_login_path(mocker, tmp_path):
+    from pomocli.daemon.desktop import launch_linux_companion
+    binary = tmp_path / ".local/bin/pomo-tray"
+    binary.parent.mkdir(parents=True)
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    mocker.patch("pomocli.daemon.desktop.Path.home", return_value=tmp_path)
+    mocker.patch("pomocli.daemon.desktop.load_config", return_value={})
+    mocker.patch("pomocli.daemon.desktop.shutil.which", return_value=None)
+    popen = mocker.patch("pomocli.daemon.desktop.subprocess.Popen")
+    launch_linux_companion()
+    assert popen.call_args.args[0] == [str(binary)]
+    binary.chmod(0o644)
+    popen.reset_mock()
+    launch_linux_companion()
+    popen.assert_not_called()
 
 
 @pytest.mark.parametrize("platform", ["linux", "darwin"])
