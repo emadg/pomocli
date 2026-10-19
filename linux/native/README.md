@@ -5,6 +5,9 @@ only by the optional, short-lived `pomo-dialog` binary. Build with a current
 stable Rust toolchain; see [Linux installation](../README.md) for dependencies
 and packaging.
 
+For the component diagram and an explanation of which processes stay running,
+see [Components and processes](../README.md#components-and-processes).
+
 Desktop integrations follow service owners rather than retrying on a timer.
 Lock, logind, and shortcut monitors subscribe to `NameOwnerChanged` before
 discovery, cancel the previous owner's monitor, and attach once to each new

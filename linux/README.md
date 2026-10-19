@@ -6,6 +6,41 @@ Python CLI process every second. A separate GTK4 helper, `pomo-dialog`, runs onl
 while a dialog is open. The optional Plasma 6 widget displays the ticking timer
 in the panel using a bundled QtDBus bridge and the companion's cached status.
 
+## Components and processes
+
+With desktop integration running, PomoCLI has two background processes: the
+Python daemon and `pomo-tray`. The panel and desktop widgets run inside KDE
+Plasma rather than as separate PomoCLI processes.
+
+```mermaid
+flowchart LR
+    CLI["pomo CLI<br/>On demand"]
+    Core["Python daemon<br/>Background"]
+    Desktop["pomo-tray<br/>Background"]
+    Widgets["KDE widgets<br/>Inside Plasma"]
+    Dialog["pomo-dialog<br/>While open"]
+
+    CLI <-->|Unix socket| Core
+    Core <-->|Unix socket| Desktop
+    Desktop <-->|D-Bus| Widgets
+    Desktop -.->|Opens when needed| Dialog
+```
+
+| Component | When it runs | Role |
+| --- | --- | --- |
+| Python daemon (`python -m pomocli.daemon`) | In the background | Runs the timer and saves session history in SQLite. |
+| Desktop companion (`pomo-tray`, Rust) | In the background | Connects the core to the widgets; provides the optional native tray icon, notifications and desktop events. |
+| KDE widgets (QML and QtDBus bridge) | Inside `plasmashell` while added to the panel or desktop | Display the timer and send controls through the companion. |
+| CLI (`pomo`, Python) | While a command or dashboard is running | Controls the timer, manages history and displays reports. |
+| Dialog helper (`pomo-dialog`, Rust and GTK4) | Only while a dialog is open | Shows Quick Start, distraction-note and return-to-session prompts. |
+
+The widgets depend on **both** the Python daemon and the desktop companion.
+If the companion stops, they appear disconnected even when the core is healthy.
+Run `pomo daemon start` to start the core and launch the installed companion;
+it also restores a missing companion when the core is already running, unless
+`[linux] autolaunch = false`. Login autostart is a separate
+[opt-in setting](#login-autostart-and-removal).
+
 ## Desktop support
 
 | Desktop | Tray and dialogs | Always-visible timer text | Desktop integration |
